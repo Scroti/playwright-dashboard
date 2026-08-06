@@ -628,71 +628,153 @@ function renderAnalytics(runs) {
   const total = runs.length;
   const successes = runs.filter((r) => r.success).length;
   const failures = runs.filter((r) => !r.success && !r.stopped).length;
+  const stopped = runs.filter((r) => r.stopped).length;
   const successRate = total ? Math.round((successes / total) * 100) : 0;
   const avgDur = total ? Math.round(runs.reduce((s, r) => s + (r.endedAt - r.startedAt), 0) / total / 100) / 10 : 0;
+  const totalShots = runs.reduce((s, r) => s + ((r.screenshots || []).length), 0);
+  const totalExtracted = runs.reduce((s, r) => s + Object.keys(r.extracted || {}).length, 0);
 
-  // Last 14 days daily counts
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const runsToday = runs.filter((r) => r.startedAt >= todayStart.getTime()).length;
+  const runsWeek = runs.filter((r) => r.startedAt >= now - 7 * day).length;
+
+  // Bin runs into last 14 days (aligned to local midnight)
   const days = [];
   for (let i = 13; i >= 0; i--) {
-    const start = now - i * day;
-    const d = new Date(start);
+    const dayStart = todayStart.getTime() - i * day;
+    const dayEnd = dayStart + day;
+    const d = new Date(dayStart);
     const label = `${d.getMonth() + 1}/${d.getDate()}`;
-    const dayRuns = runs.filter((r) => r.startedAt >= start - day / 2 && r.startedAt < start + day / 2);
-    const ok = dayRuns.filter((r) => r.success).length;
-    const fail = dayRuns.filter((r) => !r.success && !r.stopped).length;
-    days.push({ label, ok, fail });
+    const dayRuns = runs.filter((r) => r.startedAt >= dayStart && r.startedAt < dayEnd);
+    days.push({
+      label,
+      ok: dayRuns.filter((r) => r.success).length,
+      fail: dayRuns.filter((r) => !r.success && !r.stopped).length,
+    });
   }
   const maxDay = Math.max(1, ...days.map((d) => d.ok + d.fail));
 
-  // Failures per flow
-  const failByFlow = {};
+  // Per-flow aggregate
+  const perFlow = {};
   runs.forEach((r) => {
-    if (!r.success && !r.stopped) failByFlow[r.flowName] = (failByFlow[r.flowName] || 0) + 1;
+    if (!perFlow[r.flowName]) perFlow[r.flowName] = { name: r.flowName, runs: 0, success: 0, fail: 0, totalDur: 0 };
+    const f = perFlow[r.flowName];
+    f.runs++;
+    if (r.success) f.success++;
+    else if (!r.stopped) f.fail++;
+    f.totalDur += (r.endedAt - r.startedAt);
   });
-  const topFails = Object.entries(failByFlow).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  const flowStats = Object.values(perFlow).sort((a, b) => b.runs - a.runs);
 
-  const barWidth = 100 / days.length;
-  const chartH = 130;
+  // Recent failures with error line
+  const recentFails = runs
+    .filter((r) => !r.success && !r.stopped)
+    .slice(0, 5)
+    .map((r) => {
+      const errLine = (r.logs || []).slice().reverse().find((l) => /✖|Fatal|Error/i.test(l)) || '(no error captured)';
+      return { ...r, errLine };
+    });
+
+  // SVG chart with fixed unit coordinates
+  const chartW = 700, chartH = 190, marginL = 32, marginR = 12, marginB = 24, marginT = 8;
+  const plotW = chartW - marginL - marginR;
+  const plotH = chartH - marginB - marginT;
+  const barWidth = plotW / days.length;
   const bars = days.map((d, i) => {
-    const totalDay = d.ok + d.fail;
-    if (totalDay === 0) return '';
-    const okH = (d.ok / maxDay) * chartH;
-    const failH = (d.fail / maxDay) * chartH;
-    const x = i * barWidth + barWidth * 0.15;
-    const w = barWidth * 0.7;
+    if (d.ok + d.fail === 0) return '';
+    const okH = (d.ok / maxDay) * plotH;
+    const failH = (d.fail / maxDay) * plotH;
+    const x = marginL + i * barWidth + barWidth * 0.18;
+    const w = barWidth * 0.64;
     return `
-      <rect class="chart-bar" x="${x}%" y="${chartH - okH}" width="${w}%" height="${okH}"><title>${d.label}: ${d.ok} ok</title></rect>
-      <rect class="chart-bar fail" x="${x}%" y="${chartH - okH - failH}" width="${w}%" height="${failH}"><title>${d.label}: ${d.fail} fail</title></rect>
+      <rect class="chart-bar success" x="${x}" y="${marginT + plotH - okH}" width="${w}" height="${okH}"><title>${d.label}: ${d.ok} ok</title></rect>
+      <rect class="chart-bar fail" x="${x}" y="${marginT + plotH - okH - failH}" width="${w}" height="${failH}"><title>${d.label}: ${d.fail} failed</title></rect>
     `;
   }).join('');
-  const labels = days.map((d, i) => {
-    if (i % 2 !== 0) return '';
-    return `<text class="chart-label" x="${i * barWidth + barWidth * 0.5}%" y="${chartH + 14}" text-anchor="middle">${d.label}</text>`;
+  const dayLabels = days.map((d, i) => {
+    if (i % 2 !== 0 && i !== days.length - 1) return '';
+    return `<text class="chart-label" x="${marginL + i * barWidth + barWidth / 2}" y="${chartH - 6}" text-anchor="middle">${d.label}</text>`;
   }).join('');
+  const axes = `
+    <text class="chart-label" x="${marginL - 6}" y="${marginT + 4}" text-anchor="end">${maxDay}</text>
+    <text class="chart-label" x="${marginL - 6}" y="${marginT + plotH}" text-anchor="end">0</text>
+    <line class="chart-axis" x1="${marginL}" y1="${marginT}" x2="${marginL}" y2="${marginT + plotH}"/>
+    <line class="chart-axis" x1="${marginL}" y1="${marginT + plotH}" x2="${chartW - marginR}" y2="${marginT + plotH}"/>
+  `;
 
   return `
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">Total runs</div><div class="stat-value">${total}</div></div>
-      <div class="stat-card"><div class="stat-label">Success rate</div><div class="stat-value">${successRate}%</div></div>
-      <div class="stat-card"><div class="stat-label">Failures</div><div class="stat-value">${failures}</div></div>
-      <div class="stat-card"><div class="stat-label">Avg duration</div><div class="stat-value">${avgDur}s</div></div>
+      <div class="stat-card"><div class="stat-label">Success rate</div><div class="stat-value" style="color:${successRate >= 80 ? 'hsl(142 71% 45%)' : successRate >= 50 ? 'hsl(38 92% 60%)' : 'hsl(0 84% 65%)'}">${successRate}%</div></div>
+      <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-value" style="color:hsl(0 84% 65%)">${failures}</div></div>
+      <div class="stat-card"><div class="stat-label">Stopped</div><div class="stat-value" style="color:hsl(38 92% 60%)">${stopped}</div></div>
+      <div class="stat-card"><div class="stat-label">Avg duration</div><div class="stat-value">${avgDur}<span style="font-size:0.9rem;color:hsl(var(--muted-foreground))">s</span></div></div>
+      <div class="stat-card"><div class="stat-label">Screenshots</div><div class="stat-value">${totalShots}</div></div>
+      <div class="stat-card"><div class="stat-label">Data extracted</div><div class="stat-value">${totalExtracted}</div><div class="stat-hint">fields captured</div></div>
+      <div class="stat-card"><div class="stat-label">Runs today</div><div class="stat-value">${runsToday}</div><div class="stat-hint">${runsWeek} this week</div></div>
     </div>
+
     <div class="chart-section">
-      <div class="chart-title">Last 14 days (green=ok, red=failed)</div>
-      <svg class="chart-svg" viewBox="0 0 100 ${chartH + 20}" preserveAspectRatio="none">
-        <line class="chart-axis" x1="0" y1="${chartH}" x2="100" y2="${chartH}"/>
+      <div class="chart-title">Runs by day — last 14 days</div>
+      <div class="chart-legend">
+        <span><span class="legend-dot success"></span>Success</span>
+        <span><span class="legend-dot fail"></span>Failed</span>
+      </div>
+      <svg class="chart-svg" viewBox="0 0 ${chartW} ${chartH}" preserveAspectRatio="xMidYMid meet">
+        ${axes}
         ${bars}
-        ${labels}
+        ${dayLabels}
       </svg>
     </div>
+
     <div class="chart-section">
-      <div class="chart-title">Top failing flows</div>
-      ${topFails.length ? topFails.map(([name, n]) => `
-        <div class="flow-fail-row"><span>${escapeHtml(name)}</span><span style="color:hsl(0 84% 65%);font-variant-numeric:tabular-nums">${n} fails</span></div>
-      `).join('') : '<div style="color:hsl(var(--muted-foreground));padding:0.6rem;font-size:0.85rem">No failures yet 🎉</div>'}
+      <div class="chart-title">Per-flow stats</div>
+      ${flowStats.length ? `
+        <div class="flow-stats-table">
+          <div class="flow-stats-row header">
+            <span>Flow</span>
+            <span>Runs</span>
+            <span>Success</span>
+            <span>Avg time</span>
+          </div>
+          ${flowStats.slice(0, 12).map((f) => {
+            const rate = f.runs ? Math.round((f.success / f.runs) * 100) : 0;
+            const avgS = f.runs ? Math.round(f.totalDur / f.runs / 100) / 10 : 0;
+            const rateColor = rate >= 80 ? 'hsl(142 71% 45%)' : rate >= 50 ? 'hsl(38 92% 60%)' : 'hsl(0 84% 65%)';
+            return `
+              <div class="flow-stats-row">
+                <span class="flow-stats-name">${escapeHtml(f.name)}</span>
+                <span>${f.runs}</span>
+                <span style="color:${rateColor}">${rate}%</span>
+                <span>${avgS}s</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      ` : '<div style="color:hsl(var(--muted-foreground));padding:0.6rem;font-size:0.85rem">No runs yet</div>'}
     </div>
+
+    ${recentFails.length ? `
+      <div class="chart-section">
+        <div class="chart-title">Recent failures</div>
+        ${recentFails.map((r) => `
+          <div class="failure-item">
+            <div class="failure-head">
+              <span class="failure-name">${escapeHtml(r.flowName)}</span>
+              <span class="failure-time">${new Date(r.startedAt).toLocaleString()}</span>
+            </div>
+            <div class="failure-err">${escapeHtml(r.errLine)}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : `
+      <div class="chart-section">
+        <div class="chart-title">Recent failures</div>
+        <div style="color:hsl(var(--muted-foreground));font-size:0.85rem;padding:0.5rem">No failures yet 🎉</div>
+      </div>
+    `}
   `;
 }
 
