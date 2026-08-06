@@ -145,15 +145,18 @@ function currentFlow() { return flows.find((f) => f.id === currentFlowId); }
 function renderEditor() {
   const f = currentFlow();
   const crumb = $('crumb-flow');
+  const closeBtn = $('close-flow');
   if (!f) {
     $('editor-empty').style.display = '';
     $('editor-content').style.display = 'none';
     if (crumb) crumb.textContent = 'No flow selected';
+    if (closeBtn) closeBtn.style.display = 'none';
     return;
   }
   $('editor-empty').style.display = 'none';
   $('editor-content').style.display = '';
   if (crumb) crumb.textContent = f.name || 'Untitled';
+  if (closeBtn) closeBtn.style.display = '';
   $('flow-name').value = f.name;
   $('flow-loops').value = f.loops || 1;
   $('flow-schedule').value = f.schedule || '';
@@ -868,6 +871,7 @@ function renderRecStep(step) {
 function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
+$('close-flow').onclick = () => { currentFlowId = null; renderFlows(); renderEditor(); refreshIcons(); };
 $('new-flow').onclick = openNewFlow;
 $('newflow-create').onclick = createFlowFromModal;
 $('newflow-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createFlowFromModal(); });

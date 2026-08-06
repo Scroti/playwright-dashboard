@@ -322,6 +322,15 @@ button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.breadcrumb #close-flow {
+  padding: 0.2rem 0.35rem !important;
+  margin-left: 0.15rem;
+  color: hsl(var(--muted-foreground));
+  border: none;
+  background: transparent;
+}
+.breadcrumb #close-flow:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+.breadcrumb #close-flow svg { width: 14px; height: 14px; }
 .topbar-status { display: flex; align-items: center; gap: 0.5rem; }
 
 #editor { flex: 1; overflow-y: auto; padding: 1.25rem 1.5rem; }
