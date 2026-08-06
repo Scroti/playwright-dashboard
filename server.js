@@ -503,15 +503,20 @@ app.post('/api/picker/start', async (req, res) => {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
     const cdp = await context.newCDPSession(page);
     pickerActive.cdp = cdp;
-    await cdp.send('Page.startScreencast', {
-      format: 'jpeg', quality: 70,
-      maxWidth: PICKER_VIEWPORT.width, maxHeight: PICKER_VIEWPORT.height,
-      everyNthFrame: 2,
-    });
     cdp.on('Page.screencastFrame', async (frame) => {
       broadcast({ type: 'picker-frame', data: frame.data });
       try { await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }); } catch {}
     });
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg', quality: 70,
+      maxWidth: PICKER_VIEWPORT.width, maxHeight: PICKER_VIEWPORT.height,
+      everyNthFrame: 1,
+    });
+    // Bootstrap: send an immediate screenshot so the user sees something even before first screencast frame
+    try {
+      const buf = await page.screenshot({ type: 'jpeg', quality: 70, fullPage: false });
+      broadcast({ type: 'picker-frame', data: buf.toString('base64') });
+    } catch {}
     res.json({ ok: true, viewport: PICKER_VIEWPORT });
   } catch (e) {
     if (pickerActive?.browser) await pickerActive.browser.close().catch(() => {});

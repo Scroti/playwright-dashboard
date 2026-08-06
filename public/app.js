@@ -83,14 +83,16 @@ function renderFlows() {
   const el = $('flows-list');
   el.innerHTML = '';
   const visible = flows.filter((f) => matchesFilter(f, flowFilter));
-  if (!visible.length) { el.innerHTML = '<div class="empty" style="padding:1rem 0">No flows</div>'; return; }
+  const countEl = $('flows-count');
+  if (countEl) countEl.textContent = flows.length;
+  if (!visible.length) { el.innerHTML = '<div class="empty" style="padding:1rem 0;font-size:0.75rem">No flows</div>'; return; }
   visible.forEach((f) => {
     const div = document.createElement('div');
     div.className = 'flow-item' + (f.id === currentFlowId ? ' active' : '');
     const tags = (f.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
     div.innerHTML = `
-      <span>${f.schedule ? '<span class="schedule-mark">⏰</span>' : ''}${escapeHtml(f.name)} ${tags}</span>
-      <button class="del">✕</button>`;
+      <span class="flow-name-wrap">${f.schedule ? '<span class="schedule-mark">⏰</span>' : ''}<span class="flow-name-text">${escapeHtml(f.name)}</span>${tags}</span>
+      <button class="del" title="Delete">✕</button>`;
     div.onclick = (e) => {
       if (e.target.classList.contains('del')) return deleteFlow(f.id);
       selectFlow(f.id);
@@ -134,9 +136,16 @@ function currentFlow() { return flows.find((f) => f.id === currentFlowId); }
 
 function renderEditor() {
   const f = currentFlow();
-  if (!f) { $('editor-empty').style.display = ''; $('editor-content').style.display = 'none'; return; }
+  const crumb = $('crumb-flow');
+  if (!f) {
+    $('editor-empty').style.display = '';
+    $('editor-content').style.display = 'none';
+    if (crumb) crumb.textContent = 'No flow selected';
+    return;
+  }
   $('editor-empty').style.display = 'none';
   $('editor-content').style.display = '';
+  if (crumb) crumb.textContent = f.name || 'Untitled';
   $('flow-name').value = f.name;
   $('flow-loops').value = f.loops || 1;
   $('flow-schedule').value = f.schedule || '';
@@ -313,8 +322,14 @@ function openPicker(inputEl, defaultUrl) {
   $('picker-setup').style.display = '';
   $('picker-stream-wrap').style.display = 'none';
   $('picker-stream').src = '';
+  const load = $('picker-loading');
+  if (load) load.classList.remove('hide');
   $('picker-modal').classList.add('on');
   setTimeout(() => $('picker-url').focus(), 50);
+}
+
+function refreshIcons() {
+  try { if (window.lucide) window.lucide.createIcons(); } catch {}
 }
 
 async function newFlow() {
@@ -717,6 +732,8 @@ function connectWS() {
     } else if (msg.type === 'picker-frame') {
       const img = $('picker-stream');
       if (img) img.src = 'data:image/jpeg;base64,' + msg.data;
+      const load = $('picker-loading');
+      if (load) load.classList.add('hide');
     } else if (msg.type === 'picker-cancelled') {
       pickerTargetInput = null;
     } else if (msg.type === 'record-step') {
@@ -757,11 +774,13 @@ $('run-btn').onclick = run;
 $('stop-btn').onclick = stop;
 
 (async () => {
+  refreshIcons();
   try { settingsCache = await api('/api/settings'); } catch {}
   await loadFlows();
   await loadSessions();
   await loadDevices();
   await loadRuns();
+  refreshIcons();
   setInterval(loadRuns, 5000);
   connectWS();
 })();
