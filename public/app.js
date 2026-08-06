@@ -332,10 +332,20 @@ function refreshIcons() {
   try { if (window.lucide) window.lucide.createIcons(); } catch {}
 }
 
-async function newFlow() {
-  const flow = await api('/api/flows', { method: 'POST', body: JSON.stringify({ name: 'New flow', loops: 1, steps: [] }) });
-  currentFlowId = flow.id;
-  await loadFlows();
+function openNewFlow() {
+  $('newflow-name').value = '';
+  $('newflow-modal').classList.add('on');
+  setTimeout(() => { $('newflow-name').focus(); refreshIcons(); }, 50);
+}
+async function createFlowFromModal() {
+  const name = $('newflow-name').value.trim() || 'Untitled flow';
+  try {
+    const flow = await api('/api/flows', { method: 'POST', body: JSON.stringify({ name, loops: 1, steps: [] }) });
+    currentFlowId = flow.id;
+    closeModal('newflow-modal');
+    await loadFlows();
+    toast('Flow created', 'success', 1500);
+  } catch (e) { toast(e.message, 'error'); }
 }
 async function deleteFlow(id) {
   if (!confirm('Delete this flow?')) return;
@@ -849,8 +859,11 @@ function renderRecStep(step) {
 function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
 function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
-$('new-flow').onclick = newFlow;
+$('new-flow').onclick = openNewFlow;
+$('newflow-create').onclick = createFlowFromModal;
+$('newflow-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createFlowFromModal(); });
 $('save-flow').onclick = saveFlow;
+$('delete-flow').onclick = () => { if (currentFlowId) deleteFlow(currentFlowId); };
 $('add-step').onclick = addStep;
 $('run-btn').onclick = run;
 $('stop-btn').onclick = stop;

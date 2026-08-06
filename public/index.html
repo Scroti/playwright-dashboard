@@ -107,6 +107,7 @@
           </div>
           <button id="save-flow" class="primary"><i data-lucide="save"></i> Save</button>
           <button id="export-flow"><i data-lucide="download"></i> Export</button>
+          <button id="delete-flow" class="danger" title="Delete flow"><i data-lucide="trash-2"></i></button>
         </div>
 
         <div class="flow-header">
@@ -307,6 +308,19 @@
         <div class="modal-actions">
           <button id="picker-stop" class="danger"><i data-lucide="x"></i> Cancel picker</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="newflow-modal" class="modal">
+    <div class="modal-content" style="max-width:440px">
+      <h2><i data-lucide="plus-circle"></i> Create new flow</h2>
+      <label>Flow name</label>
+      <input id="newflow-name" type="text" placeholder="e.g. Daily price check" />
+      <div class="hint">You can rename, add tags, and change everything after creation.</div>
+      <div class="modal-actions">
+        <button data-close="newflow-modal">Cancel</button>
+        <button id="newflow-create" class="primary"><i data-lucide="check"></i> Create</button>
       </div>
     </div>
   </div>
