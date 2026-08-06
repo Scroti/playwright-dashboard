@@ -98,6 +98,11 @@
             <label>Flow name</label>
             <input id="flow-name" type="text" />
           </div>
+          <div style="width:150px">
+            <label>Folder</label>
+            <input id="flow-folder" type="text" list="folder-list" placeholder="(no folder)" autocomplete="off" />
+            <datalist id="folder-list"></datalist>
+          </div>
           <div style="width:170px">
             <label>Tags (comma-sep)</label>
             <input id="flow-tags" type="text" placeholder="scrape, daily" />
@@ -106,8 +111,9 @@
             <label>Loops</label>
             <input id="flow-loops" type="number" min="1" value="1" />
           </div>
-          <button id="save-flow" class="primary"><i data-lucide="save"></i> Save</button>
-          <button id="export-flow"><i data-lucide="download"></i> Export</button>
+          <button id="save-flow" class="primary" title="Save (⌘S)"><i data-lucide="save"></i> Save</button>
+          <button id="duplicate-flow" title="Duplicate"><i data-lucide="copy"></i></button>
+          <button id="export-flow" title="Export JSON"><i data-lucide="download"></i></button>
           <button id="delete-flow" class="danger" title="Delete flow"><i data-lucide="trash-2"></i></button>
         </div>
 
@@ -309,6 +315,22 @@
         <div class="modal-actions">
           <button id="picker-stop" class="danger"><i data-lucide="x"></i> Cancel picker</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cmdk-modal" class="modal cmdk-modal">
+    <div class="modal-content cmdk-content">
+      <div class="cmdk-input-wrap">
+        <i data-lucide="search"></i>
+        <input id="cmdk-input" type="text" placeholder="Search flows or type a command…" autocomplete="off" />
+        <span class="kbd">ESC</span>
+      </div>
+      <div id="cmdk-list"></div>
+      <div class="cmdk-hints">
+        <span><span class="kbd">↑↓</span> navigate</span>
+        <span><span class="kbd">↵</span> select</span>
+        <span><span class="kbd">⌘K</span> to reopen</span>
       </div>
     </div>
   </div>

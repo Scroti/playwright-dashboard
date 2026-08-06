@@ -87,6 +87,15 @@ function matchesFilter(flow, q) {
   return (flow.tags || []).some((t) => t.toLowerCase().includes(q));
 }
 
+let collapsedFolders = JSON.parse(localStorage.getItem('collapsedFolders') || '[]');
+function toggleFolder(name) {
+  if (collapsedFolders.includes(name)) collapsedFolders = collapsedFolders.filter((n) => n !== name);
+  else collapsedFolders.push(name);
+  localStorage.setItem('collapsedFolders', JSON.stringify(collapsedFolders));
+  renderFlows();
+  refreshIcons();
+}
+
 function renderFlows() {
   const el = $('flows-list');
   el.innerHTML = '';
@@ -94,7 +103,21 @@ function renderFlows() {
   const countEl = $('flows-count');
   if (countEl) countEl.textContent = flows.length;
   if (!visible.length) { el.innerHTML = '<div class="empty" style="padding:1rem 0;font-size:0.75rem">No flows</div>'; return; }
+
+  // Group by folder — unfiled last
+  const groups = new Map();
   visible.forEach((f) => {
+    const key = (f.folder || '').trim();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(f);
+  });
+  const folderNames = Array.from(groups.keys()).sort((a, b) => {
+    if (a === '' && b !== '') return 1;
+    if (b === '' && a !== '') return -1;
+    return a.localeCompare(b);
+  });
+
+  const renderItem = (f) => {
     const div = document.createElement('div');
     div.className = 'flow-item' + (f.id === currentFlowId ? ' active' : '');
     const tags = (f.tags || []).map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('');
@@ -105,8 +128,38 @@ function renderFlows() {
       if (e.target.classList.contains('del')) return deleteFlow(f.id);
       selectFlow(f.id);
     };
-    el.appendChild(div);
+    return div;
+  };
+
+  folderNames.forEach((name) => {
+    const items = groups.get(name);
+    if (name === '' && folderNames.length === 1) {
+      // Only unfiled → render flat without header
+      items.forEach((f) => el.appendChild(renderItem(f)));
+      return;
+    }
+    const isCollapsed = collapsedFolders.includes(name || '__unfiled__');
+    const header = document.createElement('div');
+    header.className = 'folder-header' + (isCollapsed ? ' collapsed' : '');
+    header.innerHTML = `
+      <i data-lucide="chevron-down" class="chevron"></i>
+      <span class="fname">${name === '' ? 'Unfiled' : escapeHtml(name)}</span>
+      <span class="folder-count">${items.length}</span>
+    `;
+    header.onclick = () => toggleFolder(name || '__unfiled__');
+    el.appendChild(header);
+    const body = document.createElement('div');
+    body.className = 'folder-body' + (isCollapsed ? ' collapsed' : '');
+    items.forEach((f) => body.appendChild(renderItem(f)));
+    el.appendChild(body);
   });
+
+  // Populate folder datalist
+  const list = $('folder-list');
+  if (list) {
+    const uniqueFolders = Array.from(new Set(flows.map((f) => f.folder).filter(Boolean))).sort();
+    list.innerHTML = uniqueFolders.map((n) => `<option value="${escapeAttr(n)}">`).join('');
+  }
 }
 
 function renderSessions() {
@@ -166,6 +219,7 @@ function renderEditor() {
   $('flow-tags').value = (f.tags || []).join(', ');
   $('flow-datarows').value = f.dataRows || '';
   $('flow-alert').value = f.alertOnFailure || '';
+  $('flow-folder').value = f.folder || '';
   const base = settingsCache.publicUrl || location.origin;
   $('flow-trigger').value = `${base}/api/trigger/${f.id}`;
   renderStepsInto(f.steps || [], $('steps'));
@@ -377,6 +431,7 @@ async function saveFlow() {
   f.tags = $('flow-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
   f.dataRows = $('flow-datarows').value.trim();
   f.alertOnFailure = Number($('flow-alert').value) || 0;
+  f.folder = $('flow-folder').value.trim();
   await api('/api/flows/' + f.id, { method: 'PUT', body: JSON.stringify(f) });
   await loadFlows();
   toast('Flow saved', 'success', 1500);
@@ -802,7 +857,8 @@ function renderAnalytics(runs) {
 
 // --- WebSocket ---
 function connectWS() {
-  const ws = new WebSocket('ws://' + location.host);
+  const proto = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  const ws = new WebSocket(proto + location.host);
   ws.onmessage = (ev) => {
     let msg; try { msg = JSON.parse(ev.data); } catch { return; }
     if (msg.type === 'log') {
@@ -873,6 +929,150 @@ function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
 $('close-flow').onclick = () => { currentFlowId = null; renderFlows(); renderEditor(); refreshIcons(); };
 $('new-flow').onclick = openNewFlow;
+
+async function duplicateFlow() {
+  const f = currentFlow();
+  if (!f) return;
+  const copy = JSON.parse(JSON.stringify(f));
+  delete copy.id;
+  copy.name = f.name + ' (copy)';
+  try {
+    const created = await api('/api/flows', { method: 'POST', body: JSON.stringify(copy) });
+    currentFlowId = created.id;
+    await loadFlows();
+    toast('Flow duplicated', 'success', 1500);
+  } catch (e) { toast(e.message, 'error'); }
+}
+$('duplicate-flow').onclick = duplicateFlow;
+
+// --- Command palette (⌘K) ---
+let cmdkSelected = 0;
+let cmdkCurrentItems = [];
+function cmdkItems() {
+  const actions = [];
+  if (currentFlowId) {
+    actions.push(
+      { group: 'Current flow', label: 'Run flow', icon: 'play', run: () => run() },
+      { group: 'Current flow', label: 'Save flow', icon: 'save', run: () => saveFlow() },
+      { group: 'Current flow', label: 'Duplicate flow', icon: 'copy', run: () => duplicateFlow() },
+      { group: 'Current flow', label: 'Delete flow', icon: 'trash-2', run: () => deleteFlow(currentFlowId) },
+      { group: 'Current flow', label: 'Close flow', icon: 'x', run: () => { currentFlowId = null; renderFlows(); renderEditor(); refreshIcons(); } },
+    );
+  }
+  actions.push(
+    { group: 'Actions', label: 'Create new flow', icon: 'plus', run: () => openNewFlow() },
+    { group: 'Actions', label: 'Record new flow', icon: 'mic', run: () => $('record-flow').click() },
+    { group: 'Actions', label: 'Generate flow with AI', icon: 'sparkles', run: () => $('ai-flow').click() },
+    { group: 'Actions', label: 'Import flow from JSON', icon: 'upload', run: () => $('import-flow').click() },
+    { group: 'Actions', label: 'Capture login session', icon: 'key-round', run: () => $('new-session').click() },
+    { group: 'Actions', label: 'Stop running flow', icon: 'square', run: () => stop() },
+  );
+  actions.push(
+    { group: 'View', label: 'Open Analytics', icon: 'bar-chart-3', run: () => $('open-analytics').click() },
+    { group: 'View', label: 'Open Settings', icon: 'settings', run: () => $('open-settings').click() },
+  );
+  flows.forEach((f) => {
+    actions.push({ group: 'Flows', label: f.name, sub: f.folder || '', icon: 'workflow', run: () => selectFlow(f.id) });
+  });
+  return actions;
+}
+function filterCmdk(items, q) {
+  if (!q) return items;
+  const t = q.toLowerCase();
+  return items.filter((i) => i.label.toLowerCase().includes(t) || (i.sub || '').toLowerCase().includes(t) || i.group.toLowerCase().includes(t));
+}
+function renderCmdk() {
+  const q = $('cmdk-input').value;
+  cmdkCurrentItems = filterCmdk(cmdkItems(), q);
+  if (cmdkSelected >= cmdkCurrentItems.length) cmdkSelected = Math.max(0, cmdkCurrentItems.length - 1);
+  const list = $('cmdk-list');
+  if (!cmdkCurrentItems.length) { list.innerHTML = '<div class="empty" style="padding:2rem 1rem;font-size:0.85rem">No results</div>'; return; }
+  let html = '';
+  let lastGroup = null;
+  cmdkCurrentItems.forEach((it, i) => {
+    if (it.group !== lastGroup) {
+      html += `<div class="cmdk-group-label">${escapeHtml(it.group)}</div>`;
+      lastGroup = it.group;
+    }
+    html += `
+      <div class="cmdk-item${i === cmdkSelected ? ' selected' : ''}" data-idx="${i}">
+        <i data-lucide="${it.icon}"></i>
+        <span class="cmdk-label">${escapeHtml(it.label)}</span>
+        ${it.sub ? `<span class="cmdk-sub">${escapeHtml(it.sub)}</span>` : ''}
+      </div>
+    `;
+  });
+  list.innerHTML = html;
+  list.querySelectorAll('.cmdk-item').forEach((el) => {
+    el.onmouseover = () => { cmdkSelected = Number(el.dataset.idx); highlightCmdk(); };
+    el.onclick = () => runCmdkItem(cmdkCurrentItems[Number(el.dataset.idx)]);
+  });
+  refreshIcons();
+  scrollSelectedIntoView();
+}
+function highlightCmdk() {
+  $('cmdk-list').querySelectorAll('.cmdk-item').forEach((el, i) => el.classList.toggle('selected', i === cmdkSelected));
+  scrollSelectedIntoView();
+}
+function scrollSelectedIntoView() {
+  const sel = $('cmdk-list').querySelector('.cmdk-item.selected');
+  if (sel) sel.scrollIntoView({ block: 'nearest' });
+}
+function runCmdkItem(item) {
+  closeModal('cmdk-modal');
+  if (item) setTimeout(() => item.run(), 30);
+}
+function openCmdk() {
+  $('cmdk-input').value = '';
+  cmdkSelected = 0;
+  $('cmdk-modal').classList.add('on');
+  renderCmdk();
+  setTimeout(() => $('cmdk-input').focus(), 30);
+}
+$('cmdk-input').addEventListener('input', () => { cmdkSelected = 0; renderCmdk(); });
+$('cmdk-input').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); cmdkSelected = Math.min(cmdkCurrentItems.length - 1, cmdkSelected + 1); highlightCmdk(); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); cmdkSelected = Math.max(0, cmdkSelected - 1); highlightCmdk(); }
+  else if (e.key === 'Enter') { e.preventDefault(); runCmdkItem(cmdkCurrentItems[cmdkSelected]); }
+});
+
+// --- Global keyboard shortcuts ---
+function isTypingIn(el) {
+  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
+}
+document.addEventListener('keydown', (e) => {
+  const meta = e.ctrlKey || e.metaKey;
+  // ⌘K / Ctrl+K: command palette
+  if (meta && e.key.toLowerCase() === 'k') { e.preventDefault(); openCmdk(); return; }
+  // ⌘S: save current flow
+  if (meta && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    if (currentFlowId) { saveFlow(); }
+    return;
+  }
+  // ⌘Enter: run current flow (only outside modals)
+  if (meta && e.key === 'Enter') {
+    if (currentFlowId && !document.querySelector('.modal.on')) { e.preventDefault(); run(); }
+    return;
+  }
+  // ⌘D: duplicate current flow
+  if (meta && e.key.toLowerCase() === 'd') {
+    if (currentFlowId) { e.preventDefault(); duplicateFlow(); }
+    return;
+  }
+  // Escape: close topmost modal
+  if (e.key === 'Escape') {
+    const open = Array.from(document.querySelectorAll('.modal.on')).pop();
+    if (open) { open.classList.remove('on'); }
+    return;
+  }
+  // /: focus search (when not typing)
+  if (e.key === '/' && !isTypingIn(e.target)) {
+    e.preventDefault();
+    $('flow-search').focus();
+    return;
+  }
+});
 $('newflow-create').onclick = createFlowFromModal;
 $('newflow-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') createFlowFromModal(); });
 $('save-flow').onclick = saveFlow;
