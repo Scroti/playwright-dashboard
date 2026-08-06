@@ -18,6 +18,7 @@
       <button id="record-flow" style="width:100%;margin-top:0.3rem">⏺ Record new flow</button>
       <button id="ai-flow" style="width:100%;margin-top:0.3rem">✨ Generate with AI</button>
       <button id="import-flow" style="width:100%;margin-top:0.3rem">⬆ Import JSON</button>
+      <button id="open-analytics" style="width:100%;margin-top:0.3rem">📊 Analytics</button>
     </div>
 
     <div class="sidebar-section">
@@ -84,6 +85,10 @@
               <button data-cron="0 9 * * 1">Mondays 9am</button>
             </div>
           </div>
+          <div style="width:170px">
+            <label>Alert after N failures</label>
+            <input id="flow-alert" type="number" min="0" placeholder="0 = disabled" />
+          </div>
           <div style="flex:1">
             <label>Data rows (JSON array — flow runs once per row; use {{key}} in step fields)</label>
             <textarea id="flow-datarows" rows="2" placeholder='[{"email":"a@x.com","pw":"..."},{"email":"b@x.com","pw":"..."}]' style="width:100%;font-family:monospace;font-size:0.8rem"></textarea>
@@ -94,6 +99,8 @@
         <button id="add-step">+ Add step</button>
       </div>
     </div>
+
+    <div id="resize-handle" title="Drag to resize"></div>
 
     <div id="runbar">
       <span class="status-badge idle" id="status">idle</span>
@@ -134,6 +141,10 @@
       <input id="setting-tg-token" type="text" placeholder="123456:ABC-..." style="width:100%" />
       <label style="margin-top:0.5rem">Telegram chat ID</label>
       <input id="setting-tg-chat" type="text" placeholder="-1001234567890 or your user id" style="width:100%" />
+
+      <label style="margin-top:1rem">Public URL (for trigger links)</label>
+      <input id="setting-public-url" type="text" placeholder="https://farm.bonusmania.top" style="width:100%" />
+      <div class="hint">Base URL shown for trigger links (leave empty to auto-detect from browser).</div>
 
       <label style="margin-top:1rem">Dashboard password (leave empty to disable)</label>
       <input id="setting-password" type="password" placeholder="•••••••" style="width:100%" />
@@ -205,6 +216,40 @@
       <div class="modal-actions">
         <button data-close="import-modal">Cancel</button>
         <button id="import-do" class="primary">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="picker-modal" class="modal">
+    <div class="modal-content" style="max-width:1350px">
+      <h2>🖱️ Pick element</h2>
+      <div id="picker-setup">
+        <label>URL to open</label>
+        <input id="picker-url" type="text" placeholder="https://example.com" />
+        <div class="hint">A headless browser loads the URL. It's streamed here — click the element you want, and the CSS selector fills in automatically. Scroll wheel works inside the stream.</div>
+        <div class="modal-actions">
+          <button data-close="picker-modal" id="picker-cancel-btn">Cancel</button>
+          <button id="picker-open" class="primary">Open</button>
+        </div>
+      </div>
+      <div id="picker-stream-wrap" style="display:none">
+        <div style="background:#000;border:1px solid hsl(var(--border));border-radius:4px;overflow:hidden;display:flex;justify-content:center;align-items:center;min-height:400px">
+          <img id="picker-stream" style="max-width:100%;cursor:crosshair;display:block" />
+        </div>
+        <div class="hint">Click on the element you want to pick. Scroll wheel scrolls the page.</div>
+        <div class="modal-actions">
+          <button id="picker-stop" class="danger">Cancel picker</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="analytics-modal" class="modal">
+    <div class="modal-content" style="max-width:900px">
+      <h2>📊 Analytics</h2>
+      <div id="analytics-content">Loading…</div>
+      <div class="modal-actions">
+        <button data-close="analytics-modal">Close</button>
       </div>
     </div>
   </div>

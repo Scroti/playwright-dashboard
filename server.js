@@ -352,6 +352,14 @@ async function runFlow(flow, options = {}) {
     broadcast({ type: 'runs-updated' });
     log(success ? 'Done ✓' : state.stopRequested ? 'Stopped ■' : 'Done ✖');
     await notify(`Playwright: "${flow.name}" — ${success ? '✅ success' : state.stopRequested ? '⏸ stopped' : '❌ failed'}`);
+    // Alert on consecutive failures
+    if (!success && !state.stopRequested && flow.alertOnFailure && Number(flow.alertOnFailure) > 0) {
+      const threshold = Number(flow.alertOnFailure);
+      const flowRuns = runs.filter((r) => r.flowId === flow.id).slice(0, threshold);
+      if (flowRuns.length >= threshold && flowRuns.every((r) => !r.success && !r.stopped)) {
+        await notify(`🚨 ALERT: "${flow.name}" has failed ${threshold} times in a row`);
+      }
+    }
   }
 }
 
@@ -450,6 +458,87 @@ app.post('/api/record/stop', async (_req, res) => {
   await recorder.browser.close().catch(() => {});
   recorder = null;
   res.json({ steps });
+});
+
+// --- Selector Picker (headless + streamed via CDP; click on stream to pick) ---
+const PICKER_SCRIPT = () => {
+  function bestSel(el) {
+    if (!el || el === document.body || el === document.documentElement) return 'body';
+    if (el.id) return '#' + CSS.escape(el.id);
+    for (const a of ['data-testid', 'data-slot', 'data-test', 'name', 'aria-label']) {
+      const v = el.getAttribute(a);
+      if (v) return `[${a}="${v.replace(/"/g, '\\"')}"]`;
+    }
+    let sel = el.tagName.toLowerCase();
+    if (typeof el.className === 'string' && el.className.trim()) {
+      const cls = el.className.trim().split(/\s+/).slice(0, 2).map((c) => '.' + CSS.escape(c)).join('');
+      sel += cls;
+    }
+    return sel;
+  }
+  document.addEventListener('click', (e) => {
+    e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+    if (window.__pickerReturn) window.__pickerReturn(bestSel(e.target));
+    return false;
+  }, true);
+};
+
+const PICKER_VIEWPORT = { width: 1280, height: 720 };
+let pickerActive = null;
+app.post('/api/picker/start', async (req, res) => {
+  if (pickerActive) return res.status(409).json({ error: 'picker already open' });
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url required' });
+  try {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: PICKER_VIEWPORT });
+    const page = await context.newPage();
+    pickerActive = { browser, page, viewport: PICKER_VIEWPORT };
+    await page.exposeFunction('__pickerReturn', async (selector) => {
+      broadcast({ type: 'picked-selector', selector });
+      try { await browser.close(); } catch {}
+      pickerActive = null;
+    });
+    await page.addInitScript(PICKER_SCRIPT);
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+    const cdp = await context.newCDPSession(page);
+    pickerActive.cdp = cdp;
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg', quality: 70,
+      maxWidth: PICKER_VIEWPORT.width, maxHeight: PICKER_VIEWPORT.height,
+      everyNthFrame: 2,
+    });
+    cdp.on('Page.screencastFrame', async (frame) => {
+      broadcast({ type: 'picker-frame', data: frame.data });
+      try { await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }); } catch {}
+    });
+    res.json({ ok: true, viewport: PICKER_VIEWPORT });
+  } catch (e) {
+    if (pickerActive?.browser) await pickerActive.browser.close().catch(() => {});
+    pickerActive = null;
+    res.status(500).json({ error: e.message });
+  }
+});
+app.post('/api/picker/click', async (req, res) => {
+  if (!pickerActive) return res.status(404).json({ error: 'no picker active' });
+  const { x, y } = req.body || {};
+  try {
+    await pickerActive.page.mouse.click(Number(x) || 0, Number(y) || 0);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/picker/scroll', async (req, res) => {
+  if (!pickerActive) return res.status(404).json({ error: 'no picker active' });
+  const { dx = 0, dy = 0 } = req.body || {};
+  try {
+    await pickerActive.page.mouse.wheel(Number(dx), Number(dy));
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/picker/cancel', async (_req, res) => {
+  if (pickerActive) { await pickerActive.browser.close().catch(() => {}); pickerActive = null; }
+  broadcast({ type: 'picker-cancelled' });
+  res.json({ ok: true });
 });
 
 // --- Session recording (login capture) ---

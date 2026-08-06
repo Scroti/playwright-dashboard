@@ -5,6 +5,9 @@ let deviceList = [];
 let currentFlowId = null;
 let sessionRecId = null;
 let flowFilter = '';
+let settingsCache = {};
+let pickerTargetInput = null;
+let dragSrc = null;
 
 const STEP_TYPES = {
   goto:       { fields: [['url', 'text', 'https://example.com', 'full']] },
@@ -142,7 +145,9 @@ function renderEditor() {
   $('flow-human').checked = !!f.humanLike;
   $('flow-tags').value = (f.tags || []).join(', ');
   $('flow-datarows').value = f.dataRows || '';
-  $('flow-trigger').value = `${location.origin}/api/trigger/${f.id}`;
+  $('flow-alert').value = f.alertOnFailure || '';
+  const base = settingsCache.publicUrl || location.origin;
+  $('flow-trigger').value = `${base}/api/trigger/${f.id}`;
   renderStepsInto(f.steps || [], $('steps'));
 }
 
@@ -154,6 +159,7 @@ function renderStepsInto(stepsArray, container) {
 function renderStep(stepsArray, step, idx) {
   const wrap = document.createElement('div');
   wrap.className = 'step';
+  wrap.setAttribute('draggable', 'true');
   const def = STEP_TYPES[step.type] || STEP_TYPES.click;
   const typeOptions = Object.keys(STEP_TYPES).map((t) =>
     `<option value="${t}" ${t === step.type ? 'selected' : ''}>${t}</option>`).join('');
@@ -161,10 +167,10 @@ function renderStep(stepsArray, step, idx) {
     const val = step[key] ?? defVal;
     const cls = span === 'full' ? 'full' : '';
     if (type === 'checkbox') {
-      return `<label class="full" style="display:flex;align-items:center;gap:0.4rem;color:#e6e6e6;text-transform:none"><input type="checkbox" data-k="${key}" ${val ? 'checked' : ''}/> ${key}</label>`;
+      return `<label class="full" style="display:flex;align-items:center;gap:0.4rem;color:hsl(var(--foreground));text-transform:none"><input type="checkbox" data-k="${key}" ${val ? 'checked' : ''}/> ${key}</label>`;
     }
     if (type === 'textarea') {
-      return `<div class="${cls}"><label>${key}</label><textarea data-k="${key}" rows="2" style="width:100%;font-family:monospace;font-size:0.8rem">${escapeHtml(val)}</textarea></div>`;
+      return `<div class="${cls}"><label>${key}</label><textarea data-k="${key}" rows="2" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem">${escapeHtml(val)}</textarea></div>`;
     }
     if (type === 'flowSelect') {
       return `<div class="${cls}"><label>${key}</label><select data-k="${key}" data-flowselect="1"></select></div>`;
@@ -173,17 +179,19 @@ function renderStep(stepsArray, step, idx) {
       const opts = type.slice(7).split('|').map((o) => `<option value="${o}" ${o === val ? 'selected' : ''}>${o}</option>`).join('');
       return `<div class="${cls}"><label>${key}</label><select data-k="${key}">${opts}</select></div>`;
     }
+    if (key === 'selector' || key === 'url') {
+      return `<div class="${cls}"><label>${key}</label><div class="with-pick"><input type="${type}" data-k="${key}" value="${escapeAttr(val)}" /><button type="button" class="pick-btn" data-pick="${key}">🖱 Pick</button></div></div>`;
+    }
     return `<div class="${cls}"><label>${key}</label><input type="${type}" data-k="${key}" value="${escapeAttr(val)}" /></div>`;
   }).join('');
   wrap.innerHTML = `
     <div class="step-head">
+      <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
       <span class="idx">#${idx + 1}</span>
       <select data-role="type">${typeOptions}</select>
       <div class="spacer"></div>
-      <button data-role="up" class="small">▲</button>
-      <button data-role="down" class="small">▼</button>
-      <button data-role="dup" class="small">⧉</button>
-      <button data-role="del" class="danger small">✕</button>
+      <button data-role="dup" class="small" title="Duplicate">⧉</button>
+      <button data-role="del" class="danger small" title="Delete">✕</button>
     </div>
     <div class="step-fields">${fields}</div>
   `;
@@ -192,8 +200,6 @@ function renderStep(stepsArray, step, idx) {
     renderStepsInto(stepsArray, wrap.parentElement);
     populateFlowSelects();
   };
-  wrap.querySelector('[data-role=up]').onclick = () => moveStep(stepsArray, idx, -1, wrap.parentElement);
-  wrap.querySelector('[data-role=down]').onclick = () => moveStep(stepsArray, idx, 1, wrap.parentElement);
   wrap.querySelector('[data-role=dup]').onclick = () => {
     stepsArray.splice(idx + 1, 0, JSON.parse(JSON.stringify(step)));
     renderStepsInto(stepsArray, wrap.parentElement);
@@ -208,6 +214,39 @@ function renderStep(stepsArray, step, idx) {
       const val = inp.type === 'checkbox' ? inp.checked : inp.type === 'number' ? Number(inp.value) : inp.value;
       stepsArray[idx][k] = val;
     };
+  });
+  wrap.querySelectorAll('[data-pick]').forEach((btn) => {
+    btn.onclick = () => {
+      const input = wrap.querySelector(`[data-k="${btn.dataset.pick}"]`);
+      const defaultUrl = findDefaultUrl();
+      openPicker(input, defaultUrl);
+    };
+  });
+
+  wrap.addEventListener('dragstart', (e) => {
+    dragSrc = { array: stepsArray, idx };
+    wrap.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  wrap.addEventListener('dragend', () => {
+    wrap.classList.remove('dragging');
+    document.querySelectorAll('.step.drag-over').forEach((s) => s.classList.remove('drag-over'));
+  });
+  wrap.addEventListener('dragover', (e) => {
+    if (!dragSrc || dragSrc.array !== stepsArray) return;
+    e.preventDefault();
+    wrap.classList.add('drag-over');
+  });
+  wrap.addEventListener('dragleave', () => wrap.classList.remove('drag-over'));
+  wrap.addEventListener('drop', (e) => {
+    e.preventDefault();
+    wrap.classList.remove('drag-over');
+    if (!dragSrc || dragSrc.array !== stepsArray || dragSrc.idx === idx) return;
+    const [moved] = stepsArray.splice(dragSrc.idx, 1);
+    const newIdx = dragSrc.idx < idx ? idx - 1 : idx;
+    stepsArray.splice(newIdx, 0, moved);
+    dragSrc = null;
+    renderStepsInto(stepsArray, wrap.parentElement);
   });
 
   if (def.hasBranches) {
@@ -261,6 +300,23 @@ function moveStep(stepsArray, idx, dir, container) {
   renderStepsInto(stepsArray, container);
 }
 
+function findDefaultUrl() {
+  const f = currentFlow();
+  if (!f) return 'https://';
+  const goto = (f.steps || []).find((s) => s.type === 'goto' && s.url);
+  return goto ? goto.url : 'https://';
+}
+
+function openPicker(inputEl, defaultUrl) {
+  pickerTargetInput = inputEl;
+  $('picker-url').value = defaultUrl;
+  $('picker-setup').style.display = '';
+  $('picker-stream-wrap').style.display = 'none';
+  $('picker-stream').src = '';
+  $('picker-modal').classList.add('on');
+  setTimeout(() => $('picker-url').focus(), 50);
+}
+
 async function newFlow() {
   const flow = await api('/api/flows', { method: 'POST', body: JSON.stringify({ name: 'New flow', loops: 1, steps: [] }) });
   currentFlowId = flow.id;
@@ -283,8 +339,10 @@ async function saveFlow() {
   f.humanLike = $('flow-human').checked;
   f.tags = $('flow-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
   f.dataRows = $('flow-datarows').value.trim();
+  f.alertOnFailure = Number($('flow-alert').value) || 0;
   await api('/api/flows/' + f.id, { method: 'PUT', body: JSON.stringify(f) });
   await loadFlows();
+  toast('Flow saved', 'success', 1500);
 }
 async function run() {
   const f = currentFlow();
@@ -343,25 +401,30 @@ document.querySelectorAll('[data-close]').forEach((b) => {
 
 $('open-settings').onclick = async () => {
   const s = await api('/api/settings');
+  settingsCache = s;
   $('setting-discord').value = s.discordWebhook || '';
   $('setting-slack').value = s.slackWebhook || '';
   $('setting-tg-token').value = s.telegramBotToken || '';
   $('setting-tg-chat').value = s.telegramChatId || '';
+  $('setting-public-url').value = s.publicUrl || '';
   $('setting-password').value = s.password || '';
   $('setting-anthropic').value = s.anthropicKey || '';
   $('settings-modal').classList.add('on');
 };
 $('save-settings').onclick = async () => {
-  await api('/api/settings', { method: 'PUT', body: JSON.stringify({
+  settingsCache = await api('/api/settings', { method: 'PUT', body: JSON.stringify({
     discordWebhook: $('setting-discord').value.trim(),
     slackWebhook: $('setting-slack').value.trim(),
     telegramBotToken: $('setting-tg-token').value.trim(),
     telegramChatId: $('setting-tg-chat').value.trim(),
+    publicUrl: $('setting-public-url').value.trim().replace(/\/$/, ''),
     password: $('setting-password').value,
     anthropicKey: $('setting-anthropic').value.trim(),
   })});
   closeModal('settings-modal');
-  if ($('setting-password').value) alert('Password set. Next page load will prompt for username (any) + password.');
+  renderEditor();
+  toast('Settings saved', 'success');
+  if ($('setting-password').value) toast('Password set — next page load will prompt for it.', 'info', 5000);
 };
 
 $('record-flow').onclick = () => {
@@ -481,6 +544,143 @@ $('flow-trigger').onclick = (e) => { e.target.select(); document.execCommand('co
 // --- Search ---
 $('flow-search').oninput = (e) => { flowFilter = e.target.value; renderFlows(); };
 
+// --- Picker modal ---
+let pickerViewport = { width: 1280, height: 720 };
+$('picker-open').onclick = async () => {
+  const url = $('picker-url').value.trim();
+  if (!url) return toast('URL required', 'error');
+  try {
+    const r = await api('/api/picker/start', { method: 'POST', body: JSON.stringify({ url }) });
+    if (r.viewport) pickerViewport = r.viewport;
+    $('picker-setup').style.display = 'none';
+    $('picker-stream-wrap').style.display = '';
+    toast('Loading page…', 'info', 2000);
+  } catch (e) { toast(e.message, 'error'); pickerTargetInput = null; }
+};
+$('picker-cancel-btn').onclick = async () => {
+  try { await api('/api/picker/cancel', { method: 'POST' }); } catch {}
+  pickerTargetInput = null;
+  closeModal('picker-modal');
+};
+$('picker-stop').onclick = async () => {
+  try { await api('/api/picker/cancel', { method: 'POST' }); } catch {}
+  pickerTargetInput = null;
+  closeModal('picker-modal');
+};
+$('picker-stream').onclick = async (e) => {
+  const img = e.target;
+  const rect = img.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * pickerViewport.width;
+  const y = ((e.clientY - rect.top) / rect.height) * pickerViewport.height;
+  try { await api('/api/picker/click', { method: 'POST', body: JSON.stringify({ x, y }) }); }
+  catch (err) { toast(err.message, 'error'); }
+};
+$('picker-stream').addEventListener('wheel', async (e) => {
+  e.preventDefault();
+  try { await api('/api/picker/scroll', { method: 'POST', body: JSON.stringify({ dx: e.deltaX, dy: e.deltaY }) }); }
+  catch {}
+}, { passive: false });
+
+// --- Resizable bottom panel ---
+(() => {
+  const handle = $('resize-handle');
+  const bottom = $('bottom');
+  let resizing = false;
+  handle.addEventListener('mousedown', (e) => { resizing = true; handle.classList.add('dragging'); e.preventDefault(); });
+  document.addEventListener('mousemove', (e) => {
+    if (!resizing) return;
+    const total = window.innerHeight;
+    const runbarH = $('runbar').offsetHeight;
+    const newBottom = total - e.clientY - runbarH;
+    const min = 80, max = total * 0.85;
+    if (newBottom < min || newBottom > max) return;
+    bottom.style.height = newBottom + 'px';
+  });
+  document.addEventListener('mouseup', () => { resizing = false; handle.classList.remove('dragging'); });
+})();
+
+// --- Analytics modal ---
+$('open-analytics').onclick = async () => {
+  $('analytics-modal').classList.add('on');
+  $('analytics-content').innerHTML = 'Loading…';
+  try {
+    const runs = await api('/api/runs');
+    $('analytics-content').innerHTML = renderAnalytics(runs);
+  } catch (e) { $('analytics-content').innerHTML = 'Error: ' + e.message; }
+};
+
+function renderAnalytics(runs) {
+  const total = runs.length;
+  const successes = runs.filter((r) => r.success).length;
+  const failures = runs.filter((r) => !r.success && !r.stopped).length;
+  const successRate = total ? Math.round((successes / total) * 100) : 0;
+  const avgDur = total ? Math.round(runs.reduce((s, r) => s + (r.endedAt - r.startedAt), 0) / total / 100) / 10 : 0;
+
+  // Last 14 days daily counts
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const start = now - i * day;
+    const d = new Date(start);
+    const label = `${d.getMonth() + 1}/${d.getDate()}`;
+    const dayRuns = runs.filter((r) => r.startedAt >= start - day / 2 && r.startedAt < start + day / 2);
+    const ok = dayRuns.filter((r) => r.success).length;
+    const fail = dayRuns.filter((r) => !r.success && !r.stopped).length;
+    days.push({ label, ok, fail });
+  }
+  const maxDay = Math.max(1, ...days.map((d) => d.ok + d.fail));
+
+  // Failures per flow
+  const failByFlow = {};
+  runs.forEach((r) => {
+    if (!r.success && !r.stopped) failByFlow[r.flowName] = (failByFlow[r.flowName] || 0) + 1;
+  });
+  const topFails = Object.entries(failByFlow).sort((a, b) => b[1] - a[1]).slice(0, 8);
+
+  const barWidth = 100 / days.length;
+  const chartH = 130;
+  const bars = days.map((d, i) => {
+    const totalDay = d.ok + d.fail;
+    if (totalDay === 0) return '';
+    const okH = (d.ok / maxDay) * chartH;
+    const failH = (d.fail / maxDay) * chartH;
+    const x = i * barWidth + barWidth * 0.15;
+    const w = barWidth * 0.7;
+    return `
+      <rect class="chart-bar" x="${x}%" y="${chartH - okH}" width="${w}%" height="${okH}"><title>${d.label}: ${d.ok} ok</title></rect>
+      <rect class="chart-bar fail" x="${x}%" y="${chartH - okH - failH}" width="${w}%" height="${failH}"><title>${d.label}: ${d.fail} fail</title></rect>
+    `;
+  }).join('');
+  const labels = days.map((d, i) => {
+    if (i % 2 !== 0) return '';
+    return `<text class="chart-label" x="${i * barWidth + barWidth * 0.5}%" y="${chartH + 14}" text-anchor="middle">${d.label}</text>`;
+  }).join('');
+
+  return `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Total runs</div><div class="stat-value">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Success rate</div><div class="stat-value">${successRate}%</div></div>
+      <div class="stat-card"><div class="stat-label">Failures</div><div class="stat-value">${failures}</div></div>
+      <div class="stat-card"><div class="stat-label">Avg duration</div><div class="stat-value">${avgDur}s</div></div>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">Last 14 days (green=ok, red=failed)</div>
+      <svg class="chart-svg" viewBox="0 0 100 ${chartH + 20}" preserveAspectRatio="none">
+        <line class="chart-axis" x1="0" y1="${chartH}" x2="100" y2="${chartH}"/>
+        ${bars}
+        ${labels}
+      </svg>
+    </div>
+    <div class="chart-section">
+      <div class="chart-title">Top failing flows</div>
+      ${topFails.length ? topFails.map(([name, n]) => `
+        <div class="flow-fail-row"><span>${escapeHtml(name)}</span><span style="color:hsl(0 84% 65%);font-variant-numeric:tabular-nums">${n} fails</span></div>
+      `).join('') : '<div style="color:hsl(var(--muted-foreground));padding:0.6rem;font-size:0.85rem">No failures yet 🎉</div>'}
+    </div>
+  `;
+}
+
 // --- WebSocket ---
 function connectWS() {
   const ws = new WebSocket('ws://' + location.host);
@@ -502,6 +702,23 @@ function connectWS() {
       let img = p.querySelector('img');
       if (!img) { p.innerHTML = ''; img = document.createElement('img'); p.appendChild(img); }
       img.src = 'data:image/jpeg;base64,' + msg.data;
+    } else if (msg.type === 'picked-selector') {
+      if (pickerTargetInput) {
+        if (msg.selector) {
+          pickerTargetInput.value = msg.selector;
+          pickerTargetInput.dispatchEvent(new Event('input', { bubbles: true }));
+          toast('Selector picked: ' + msg.selector, 'success', 4000);
+        } else {
+          toast('Picker cancelled', 'info');
+        }
+        pickerTargetInput = null;
+      }
+      closeModal('picker-modal');
+    } else if (msg.type === 'picker-frame') {
+      const img = $('picker-stream');
+      if (img) img.src = 'data:image/jpeg;base64,' + msg.data;
+    } else if (msg.type === 'picker-cancelled') {
+      pickerTargetInput = null;
     } else if (msg.type === 'record-step') {
       const el = $('record-steps');
       if (msg.replaceLast) {
@@ -539,9 +756,12 @@ $('add-step').onclick = addStep;
 $('run-btn').onclick = run;
 $('stop-btn').onclick = stop;
 
-loadFlows();
-loadSessions();
-loadDevices();
-loadRuns();
-setInterval(loadRuns, 5000);
-connectWS();
+(async () => {
+  try { settingsCache = await api('/api/settings'); } catch {}
+  await loadFlows();
+  await loadSessions();
+  await loadDevices();
+  await loadRuns();
+  setInterval(loadRuns, 5000);
+  connectWS();
+})();
