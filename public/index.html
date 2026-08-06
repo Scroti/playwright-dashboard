@@ -1,0 +1,211 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Playwright Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <aside id="sidebar">
+    <div class="sidebar-section">
+      <h2>Flows</h2>
+      <input id="flow-search" type="text" placeholder="🔍 search / #tag" style="width:100%;margin-bottom:0.4rem" />
+      <div id="flows-list"></div>
+      <button id="new-flow" class="primary" style="width:100%;margin-top:0.5rem">+ New Flow</button>
+      <button id="record-flow" style="width:100%;margin-top:0.3rem">⏺ Record new flow</button>
+      <button id="ai-flow" style="width:100%;margin-top:0.3rem">✨ Generate with AI</button>
+      <button id="import-flow" style="width:100%;margin-top:0.3rem">⬆ Import JSON</button>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>Sessions (Login)</h2>
+      <div id="sessions-list"></div>
+      <button id="new-session" style="width:100%;margin-top:0.5rem">+ Capture login</button>
+    </div>
+
+    <div class="sidebar-section" style="margin-top:auto">
+      <button id="open-settings" class="ghost" style="width:100%">⚙ Settings</button>
+    </div>
+  </aside>
+
+  <main id="main">
+    <div id="editor">
+      <div id="editor-empty" class="empty">Select or create a flow to edit</div>
+      <div id="editor-content" style="display:none">
+        <div class="flow-header">
+          <div style="flex:1;min-width:200px">
+            <label>Flow name</label>
+            <input id="flow-name" type="text" />
+          </div>
+          <div style="width:180px">
+            <label>Tags (comma-sep)</label>
+            <input id="flow-tags" type="text" placeholder="scrape, daily" />
+          </div>
+          <div class="loops">
+            <label>Loops</label>
+            <input id="flow-loops" type="number" min="1" value="1" />
+          </div>
+          <button id="save-flow" class="primary">Save</button>
+          <button id="export-flow">⬇ Export</button>
+        </div>
+
+        <div class="flow-header">
+          <div class="session-box">
+            <label>Use session</label>
+            <select id="flow-session"><option value="">(none)</option></select>
+          </div>
+          <div style="width:180px">
+            <label>Device</label>
+            <select id="flow-device"><option value="">Default</option></select>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <label style="display:flex;align-items:center;gap:0.4rem;color:#e6e6e6;text-transform:none;font-size:0.9rem"><input type="checkbox" id="flow-human" /> human-like delays</label>
+          </div>
+          <div style="flex:1"></div>
+          <div style="min-width:300px">
+            <label>Public trigger URL (POST to run remotely)</label>
+            <input id="flow-trigger" type="text" readonly />
+          </div>
+        </div>
+
+        <div class="flow-header">
+          <div class="schedule-box">
+            <label>Schedule (cron)</label>
+            <input id="flow-schedule" type="text" placeholder="e.g. 0 9 * * *  (leave empty for manual)" />
+            <div class="cron-presets">
+              <button data-cron="">off</button>
+              <button data-cron="*/5 * * * *">every 5 min</button>
+              <button data-cron="0 * * * *">every hour</button>
+              <button data-cron="0 9 * * *">daily 9am</button>
+              <button data-cron="0 9 * * 1">Mondays 9am</button>
+            </div>
+          </div>
+          <div style="flex:1">
+            <label>Data rows (JSON array — flow runs once per row; use {{key}} in step fields)</label>
+            <textarea id="flow-datarows" rows="2" placeholder='[{"email":"a@x.com","pw":"..."},{"email":"b@x.com","pw":"..."}]' style="width:100%;font-family:monospace;font-size:0.8rem"></textarea>
+          </div>
+        </div>
+
+        <div id="steps"></div>
+        <button id="add-step">+ Add step</button>
+      </div>
+    </div>
+
+    <div id="runbar">
+      <span class="status-badge idle" id="status">idle</span>
+      <label style="margin:0"><input type="checkbox" id="headless" /> headless</label>
+      <div style="flex:1"></div>
+      <button id="run-btn" class="primary">▶ Run</button>
+      <button id="stop-btn" class="danger">■ Stop</button>
+    </div>
+
+    <div id="bottom">
+      <div id="logs-panel">
+        <div class="tabs">
+          <div class="tab active" data-tab="logs">Logs</div>
+          <div class="tab" data-tab="preview">Live preview</div>
+        </div>
+        <div class="tab-content">
+          <div id="logs">Waiting for first run…</div>
+          <div id="preview" style="display:none"><div class="placeholder">Live preview appears here when a run starts</div></div>
+        </div>
+      </div>
+      <div id="history">
+        <h3>Recent runs</h3>
+        <div id="runs-list"></div>
+      </div>
+    </div>
+  </main>
+
+  <div id="shot-modal" class="modal"><img id="shot-modal-img" /></div>
+
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <h2>Settings</h2>
+      <label>Discord webhook URL</label>
+      <input id="setting-discord" type="text" placeholder="https://discord.com/api/webhooks/..." style="width:100%" />
+      <label style="margin-top:0.5rem">Slack webhook URL</label>
+      <input id="setting-slack" type="text" placeholder="https://hooks.slack.com/services/..." style="width:100%" />
+      <label style="margin-top:0.5rem">Telegram bot token</label>
+      <input id="setting-tg-token" type="text" placeholder="123456:ABC-..." style="width:100%" />
+      <label style="margin-top:0.5rem">Telegram chat ID</label>
+      <input id="setting-tg-chat" type="text" placeholder="-1001234567890 or your user id" style="width:100%" />
+
+      <label style="margin-top:1rem">Dashboard password (leave empty to disable)</label>
+      <input id="setting-password" type="password" placeholder="•••••••" style="width:100%" />
+      <div class="hint">Once set, browser prompts for username (any) + this password. Webhook triggers still work without auth.</div>
+
+      <label style="margin-top:1rem">Anthropic API key (for ✨ AI Generate)</label>
+      <input id="setting-anthropic" type="password" placeholder="sk-ant-..." style="width:100%" />
+      <div class="hint">Get one at console.anthropic.com. Uses Claude Sonnet 4.6 by default.</div>
+
+      <div class="modal-actions">
+        <button data-close="settings-modal">Cancel</button>
+        <button id="save-settings" class="primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="record-modal" class="modal">
+    <div class="modal-content">
+      <h2>Record a new flow</h2>
+      <label>Start URL</label>
+      <input id="record-url" type="text" placeholder="https://example.com" style="width:100%" />
+      <div class="hint">A Chromium window opens. Whatever you click / type is captured. When done, hit Stop.</div>
+      <div id="record-live" style="display:none">
+        <label style="margin-top:0.75rem">Captured steps</label>
+        <div id="record-steps" class="recorded-steps"></div>
+      </div>
+      <div class="modal-actions">
+        <button data-close="record-modal">Cancel</button>
+        <button id="record-start" class="primary">⏺ Start recording</button>
+        <button id="record-stop" class="danger" style="display:none">■ Stop &amp; save as flow</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="session-modal" class="modal">
+    <div class="modal-content">
+      <h2>Capture login session</h2>
+      <label>Session name</label>
+      <input id="session-name" type="text" placeholder="my-site-prod" style="width:100%" />
+      <label style="margin-top:0.5rem">Login URL</label>
+      <input id="session-url" type="text" placeholder="https://example.com/login" style="width:100%" />
+      <div class="hint">A browser opens — log in manually, come back and hit "I'm logged in". Cookies + storage will be saved.</div>
+      <div class="modal-actions">
+        <button data-close="session-modal" id="session-cancel">Cancel</button>
+        <button id="session-start" class="primary">Open browser</button>
+        <button id="session-save" class="primary" style="display:none">I'm logged in — save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ai-modal" class="modal">
+    <div class="modal-content">
+      <h2>✨ Generate flow with AI</h2>
+      <label>Describe what you want the automation to do</label>
+      <textarea id="ai-prompt" rows="6" style="width:100%;font-family:inherit" placeholder="Log into example.com with {{email}} and {{password}}, click the 'Reports' link, wait for the table, extract the total from .summary-total, and screenshot it."></textarea>
+      <div class="hint">Uses Claude Sonnet 4.6 (set API key in Settings). Output is saved as a new flow you can edit.</div>
+      <div class="modal-actions">
+        <button data-close="ai-modal">Cancel</button>
+        <button id="ai-generate" class="primary">Generate</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-modal" class="modal">
+    <div class="modal-content">
+      <h2>Import flow from JSON</h2>
+      <label>Paste flow JSON</label>
+      <textarea id="import-text" rows="10" style="width:100%;font-family:monospace;font-size:0.8rem"></textarea>
+      <div class="modal-actions">
+        <button data-close="import-modal">Cancel</button>
+        <button id="import-do" class="primary">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
