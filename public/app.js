@@ -28,6 +28,20 @@ async function api(url, opts) {
   return r.json();
 }
 
+function toast(msg, kind = 'info', duration = 3500) {
+  const c = document.getElementById('toast-container');
+  if (!c) { console.log(msg); return; }
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => {
+    el.classList.add('leaving');
+    setTimeout(() => el.remove(), 200);
+  }, duration);
+}
+window.alert = (msg) => toast(String(msg), 'error', 4000);
+
 async function loadFlows() {
   flows = await api('/api/flows');
   renderFlows();
