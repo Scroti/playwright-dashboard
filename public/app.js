@@ -8,6 +8,7 @@ let flowFilter = '';
 let settingsCache = {};
 let pickerTargetInput = null;
 let dragSrc = null;
+let firstLoad = true;
 
 const STEP_TYPES = {
   goto:       { fields: [['url', 'text', 'https://example.com', 'full']] },
@@ -49,8 +50,15 @@ async function loadFlows() {
   flows = await api('/api/flows');
   renderFlows();
   populateFlowSelects();
-  if (!currentFlowId && flows.length) selectFlow(flows[0].id);
-  else if (currentFlowId) renderEditor();
+  if (firstLoad && !currentFlowId && flows.length) {
+    firstLoad = false;
+    selectFlow(flows[0].id);
+  } else {
+    firstLoad = false;
+    // If the current flow was deleted, drop selection so empty state shows
+    if (currentFlowId && !flows.find((f) => f.id === currentFlowId)) currentFlowId = null;
+    renderEditor();
+  }
 }
 
 async function loadSessions() {
@@ -352,6 +360,7 @@ async function deleteFlow(id) {
   await api('/api/flows/' + id, { method: 'DELETE' });
   if (currentFlowId === id) currentFlowId = null;
   await loadFlows();
+  toast('Flow deleted', 'info', 1500);
 }
 async function saveFlow() {
   const f = currentFlow();
