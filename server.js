@@ -290,8 +290,11 @@ async function runFlow(flow, options = {}) {
   const ctx = { runId, shotIndex: 0, screenshots: [], extracted: {}, errored: false, humanLike: !!flow.humanLike };
   let browser, cdp;
   try {
-    log(`Run "${flow.name}" (headless=${!!options.headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''})`);
-    browser = await chromium.launch({ headless: !!options.headless });
+    // On Linux without $DISPLAY we have no X server → force headless regardless of user pref
+    const noDisplay = process.platform === 'linux' && !process.env.DISPLAY;
+    const headless = !!options.headless || noDisplay;
+    log(`Run "${flow.name}" (headless=${headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''}${noDisplay && !options.headless ? ' — forced (no display)' : ''})`);
+    browser = await chromium.launch({ headless });
 
     const ctxOpts = {};
     if (flow.device && devices[flow.device]) {
