@@ -43,19 +43,33 @@ const CLOAK_BOT_UAS = [
   /googlebot/i, /bingbot/i, /yandex/i, /baiduspider/i, /duckduckbot/i,
   /facebookexternalhit/i, /semrush/i, /ahrefs/i, /mj12bot/i, /dotbot/i,
 ];
+// Score-based: any single weak signal (e.g. missing Sec-Fetch after a CDN strips
+// it) shouldn't misclassify a real browser. Strong signals (bot UA, empty UA)
+// still fire on their own. Threshold: >= 5 = crawler.
+const CLOAK_THRESHOLD = 5;
 function classifyRequest(req) {
-  const reasons = [];
+  const signals = [];
+  let score = 0;
+  const add = (weight, reason) => { score += weight; signals.push({ weight, reason }); };
+
   const ua = req.headers['user-agent'] || '';
-  if (!ua) reasons.push('empty user-agent');
-  else if (CLOAK_BOT_UAS.some((r) => r.test(ua))) reasons.push('user-agent matches bot pattern');
-  if (!req.headers['accept-language']) reasons.push('missing Accept-Language');
-  if (!req.headers['accept-encoding']) reasons.push('missing Accept-Encoding');
   const accept = req.headers['accept'] || '';
-  if (!accept.includes('text/html') && !accept.includes('*/*')) reasons.push('non-browser Accept header');
+  const acceptLang = req.headers['accept-language'];
+  const acceptEnc = req.headers['accept-encoding'];
   const secChUa = req.headers['sec-ch-ua'];
   const secFetchSite = req.headers['sec-fetch-site'];
-  if (!secChUa && !secFetchSite && ua.toLowerCase().includes('chrome')) reasons.push('claims Chrome but missing Sec-* headers');
-  return { bucket: reasons.length ? 'crawler' : 'target', reasons, ua, ip: req.ip };
+
+  if (!ua) add(10, 'empty user-agent');
+  else if (CLOAK_BOT_UAS.some((r) => r.test(ua))) add(10, 'user-agent matches bot pattern');
+
+  if (!acceptLang) add(3, 'missing Accept-Language');
+  if (!acceptEnc) add(2, 'missing Accept-Encoding');
+  if (accept && !accept.includes('text/html') && !accept.includes('*/*')) add(2, `non-browser Accept ("${accept.slice(0, 40)}")`);
+  // Weak signal — many CDNs (including Cloudflare) strip Sec-Fetch-* on some paths
+  if (!secChUa && !secFetchSite && ua.toLowerCase().includes('chrome')) add(1, 'claims Chrome but missing Sec-Fetch / sec-ch-ua (weak; often CDN-stripped)');
+
+  const bucket = score >= CLOAK_THRESHOLD ? 'crawler' : 'target';
+  return { bucket, score, threshold: CLOAK_THRESHOLD, signals, ua, ip: req.ip };
 }
 
 // Debug endpoint — always exposes the classifier's decision (never cloaked)
@@ -80,7 +94,8 @@ app.use((req, res, next) => {
   if (req.query.bypass === bypass) return next();
 
   const c = classifyRequest(req);
-  console.log(`[cloak] ${c.bucket} ${req.method} ${req.path} ip=${c.ip} ua="${c.ua.slice(0, 60)}"${c.reasons.length ? ' — ' + c.reasons.join('; ') : ''}`);
+  const signalStr = c.signals.map((s) => `+${s.weight} ${s.reason}`).join('; ');
+  console.log(`[cloak] ${c.bucket} (score ${c.score}/${c.threshold}) ${req.method} ${req.path} ip=${c.ip} ua="${c.ua.slice(0, 60)}"${signalStr ? ' — ' + signalStr : ''}`);
 
   if (c.bucket === 'crawler') {
     return res.type('text/html').send(`<!doctype html>

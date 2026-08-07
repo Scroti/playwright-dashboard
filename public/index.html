@@ -210,7 +210,11 @@
         <label class="inline-check" style="display:flex;align-items:center;gap:0.5rem">
           <input id="setting-cloak" type="checkbox" /> Enable cloaking classifier
         </label>
-        <div class="hint">When on, requests that look like bots (curl, missing Accept-Language, known crawler UAs, etc.) get a plain "Hello world" instead of the dashboard. Real browsers pass through. Rescue URL if you lock yourself out: <code>?bypass=demo</code>. Debug: <code>/whoami</code>.</div>
+        <div class="hint">When on, requests that look like bots get "Hello world"; real browsers pass through. Rescue URL: <code>?bypass=demo</code>. Debug: <code>/whoami</code>.</div>
+        <div style="margin-top:0.6rem">
+          <button id="cloak-test" type="button" class="small"><i data-lucide="scan-face"></i> Test my classification</button>
+          <pre id="cloak-test-out" style="display:none;margin-top:0.5rem;padding:0.6rem;background:hsl(var(--muted));border-radius:6px;font-size:0.75rem;max-height:220px;overflow:auto;white-space:pre-wrap"></pre>
+        </div>
       </div>
 
       <div class="modal-actions">

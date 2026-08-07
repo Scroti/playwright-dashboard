@@ -526,6 +526,26 @@ document.querySelectorAll('[data-close]').forEach((b) => {
   b.onclick = () => closeModal(b.dataset.close);
 });
 
+$('cloak-test').onclick = async () => {
+  const out = $('cloak-test-out');
+  out.style.display = '';
+  out.textContent = 'Checking…';
+  try {
+    const r = await fetch('/whoami', { cache: 'no-store' });
+    const data = await r.json();
+    const c = data.classification;
+    const signalLines = (c.signals || []).map((s) => `  +${s.weight}  ${s.reason}`).join('\n') || '  (no bot signals detected)';
+    out.textContent =
+      `Bucket:    ${c.bucket === 'target' ? '✓ TARGET (uncloaked)' : '✗ CRAWLER (cloaked)'}\n` +
+      `Score:     ${c.score} / ${c.threshold}\n` +
+      `IP:        ${c.ip}\n` +
+      `UA:        ${c.ua}\n\n` +
+      `Signals:\n${signalLines}\n\n` +
+      `Cloak enabled server-side: ${data.cloakEnabled}\n\n` +
+      `Raw headers:\n${JSON.stringify(data.headers, null, 2)}`;
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
+};
+
 $('open-settings').onclick = async () => {
   const s = await api('/api/settings');
   settingsCache = s;
