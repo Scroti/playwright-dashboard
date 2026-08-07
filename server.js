@@ -483,6 +483,12 @@ async function runFlow(flow, options = {}) {
     log(`Run "${flow.name}" (headless=${headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''}${stealth ? ', stealth' : ''}${noDisplay && !options.headless ? ' — forced (no display)' : ''})`);
     const launchOpts = { headless };
     if (stealth) launchOpts.args = STEALTH_ARGS;
+    if (flow.proxyServer) {
+      launchOpts.proxy = { server: flow.proxyServer };
+      if (flow.proxyUser) launchOpts.proxy.username = flow.proxyUser;
+      if (flow.proxyPass) launchOpts.proxy.password = flow.proxyPass;
+      log(`  proxy: ${flow.proxyServer}${flow.proxyUser ? ` (auth as ${flow.proxyUser})` : ''}`);
+    }
     if (stealth) {
       // Prefer real installed Chrome (matches real JA3/TLS fingerprint).
       // Falls back to bundled Chromium if Chrome isn't available on the host.
@@ -522,6 +528,15 @@ async function runFlow(flow, options = {}) {
     }
     const context = await browser.newContext(ctxOpts);
     if (stealth) await context.addInitScript(stealthInitScript);
+    if (flow.extraHeaders) {
+      try {
+        const hdrs = typeof flow.extraHeaders === 'string' ? JSON.parse(flow.extraHeaders) : flow.extraHeaders;
+        if (hdrs && typeof hdrs === 'object') {
+          await context.setExtraHTTPHeaders(hdrs);
+          log(`  extra headers: ${Object.keys(hdrs).join(', ')}`);
+        }
+      } catch (e) { log(`  ! invalid extraHeaders JSON: ${e.message}`); }
+    }
     const page = await context.newPage();
 
     if (options.livePreview !== false) cdp = await startPreview(page);

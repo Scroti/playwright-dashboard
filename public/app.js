@@ -221,6 +221,10 @@ function renderEditor() {
   // dataRows removed from UI; still preserved server-side
   $('flow-alert').value = f.alertOnFailure || '';
   $('flow-folder').value = f.folder || '';
+  $('flow-proxy').value = f.proxyServer || '';
+  $('flow-proxy-user').value = f.proxyUser || '';
+  $('flow-proxy-pass').value = f.proxyPass || '';
+  $('flow-extra-headers').value = f.extraHeaders || '';
   const base = settingsCache.publicUrl || location.origin;
   $('flow-trigger').value = `${base}/api/trigger/${f.id}`;
   renderStepsInto(f.steps || [], $('steps'));
@@ -467,6 +471,10 @@ async function saveFlow() {
   // f.dataRows left as-is (UI removed but value preserved)
   f.alertOnFailure = Number($('flow-alert').value) || 0;
   f.folder = $('flow-folder').value.trim();
+  f.proxyServer = $('flow-proxy').value.trim();
+  f.proxyUser = $('flow-proxy-user').value.trim();
+  f.proxyPass = $('flow-proxy-pass').value;
+  f.extraHeaders = $('flow-extra-headers').value.trim();
   await api('/api/flows/' + f.id, { method: 'PUT', body: JSON.stringify(f) });
   await loadFlows();
   toast('Flow saved', 'success', 1500);

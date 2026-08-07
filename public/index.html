@@ -139,6 +139,19 @@
           <div class="fld fld-170"><label>Alert after N failures</label><input id="flow-alert" type="number" min="0" placeholder="0 = off" /></div>
         </div>
 
+        <div class="flow-toolbar align-top">
+          <div class="fld fld-grow"><label>Proxy server (bypass geo / datacenter-IP filters)</label><input id="flow-proxy" type="text" placeholder="http://proxy.example.com:8000  or  socks5://..." /></div>
+          <div class="fld fld-170"><label>Proxy user</label><input id="flow-proxy-user" type="text" placeholder="(optional)" /></div>
+          <div class="fld fld-170"><label>Proxy pass</label><input id="flow-proxy-pass" type="password" placeholder="(optional)" /></div>
+        </div>
+
+        <div class="flow-toolbar align-top">
+          <div class="fld fld-grow">
+            <label>Extra HTTP headers (JSON, applied to every request)</label>
+            <textarea id="flow-extra-headers" rows="2" placeholder='{"Referer":"https://google.com/","X-Foo":"bar"}' style="width:100%;font-family:'JetBrains Mono',monospace;font-size:0.75rem"></textarea>
+          </div>
+        </div>
+
         <div id="steps"></div>
         <button id="add-step" class="add-step-btn"><i data-lucide="plus"></i> Add step</button>
       </div>
