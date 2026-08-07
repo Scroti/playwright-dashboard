@@ -526,6 +526,26 @@ document.querySelectorAll('[data-close]').forEach((b) => {
   b.onclick = () => closeModal(b.dataset.close);
 });
 
+$('server-ip-test').onclick = async () => {
+  const out = $('cloak-test-out');
+  out.style.display = '';
+  out.textContent = 'Asking the server what IP it uses to reach the outside world…';
+  try {
+    const r = await fetch('/api/server-ip', { cache: 'no-store' });
+    const data = await r.json();
+    if (data.error) { out.textContent = 'Error: ' + data.error; return; }
+    out.textContent =
+      `Server outbound IP: ${data.ip || '?'}\n` +
+      `Country:            ${data.country || '?'}\n` +
+      `Region / City:      ${data.region || '?'} / ${data.city || '?'}\n` +
+      `Org / ISP:          ${data.org || '?'}\n` +
+      `Hostname:           ${data.hostname || '(none)'}\n\n` +
+      `→ This is what any site sees when a Kite flow makes a request.\n` +
+      `→ /whoami shows YOUR browser's IP (different — that's the request coming INTO Kite).\n\n` +
+      `Raw ipinfo response:\n${JSON.stringify(data, null, 2)}`;
+  } catch (e) { out.textContent = 'Error: ' + e.message; }
+};
+
 $('cloak-test').onclick = async () => {
   const out = $('cloak-test-out');
   out.style.display = '';

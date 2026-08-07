@@ -81,6 +81,18 @@ app.get('/whoami', (req, res) => {
   }, null, 2));
 });
 
+// Shows the server's outbound IP (what external sites see when a flow runs).
+// This is DIFFERENT from /whoami — /whoami is about the incoming request; this
+// is about the connection Kite itself opens to the outside world.
+app.get('/api/server-ip', async (_req, res) => {
+  try {
+    const r = await fetch('https://ipinfo.io/json', { headers: { Accept: 'application/json' } });
+    if (!r.ok) return res.status(502).json({ error: `ipinfo returned ${r.status}` });
+    const data = await r.json();
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.use((req, res, next) => {
   if (!settings.cloakEnabled) return next();
   // Only classify top-level HTML navigations; assets, APIs, webhooks pass through
