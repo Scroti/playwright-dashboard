@@ -540,7 +540,7 @@ app.post('/api/picker/scroll', async (req, res) => {
   if (!pickerActive) return res.status(404).json({ error: 'no picker active' });
   const { dx = 0, dy = 0 } = req.body || {};
   try {
-    await pickerActive.page.mouse.wheel(Number(dx), Number(dy));
+    await pickerActive.page.evaluate(({ x, y }) => window.scrollBy(x, y), { x: Number(dx), y: Number(dy) });
     res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
