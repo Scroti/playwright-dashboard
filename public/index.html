@@ -102,20 +102,16 @@
           </div>
           <div class="fld fld-160"><label>Tags</label><input id="flow-tags" type="text" placeholder="scrape, daily" /></div>
           <div class="fld fld-80"><label>Loops</label><input id="flow-loops" type="number" min="1" value="1" /></div>
-          <div class="fld-btns">
-            <button id="save-flow" class="primary" title="Save (⌘S)"><i data-lucide="save"></i> Save</button>
-            <button id="duplicate-flow" title="Duplicate (⌘D)"><i data-lucide="copy"></i></button>
-            <button id="export-flow" title="Export JSON"><i data-lucide="download"></i></button>
-            <button id="delete-flow" class="danger" title="Delete flow"><i data-lucide="trash-2"></i></button>
-          </div>
+          <button id="save-flow" class="primary row-btn" title="Save (⌘S)"><i data-lucide="save"></i> Save</button>
+          <button id="duplicate-flow" class="row-btn" title="Duplicate (⌘D)"><i data-lucide="copy"></i></button>
+          <button id="export-flow" class="row-btn" title="Export JSON"><i data-lucide="download"></i></button>
+          <button id="delete-flow" class="danger row-btn" title="Delete flow"><i data-lucide="trash-2"></i></button>
         </div>
 
         <div class="flow-toolbar">
           <div class="fld fld-170"><label>Use session</label><select id="flow-session"><option value="">(none)</option></select></div>
           <div class="fld fld-180"><label>Device</label><select id="flow-device"><option value="">Default</option></select></div>
-          <div class="fld fld-toggle">
-            <label class="inline-check"><input type="checkbox" id="flow-human" /> Human-like delays</label>
-          </div>
+          <label class="inline-check row-check"><input type="checkbox" id="flow-human" /> Human-like delays</label>
           <div class="fld-spacer"></div>
           <div class="fld fld-trigger"><label>Public trigger URL</label><input id="flow-trigger" type="text" readonly title="Click to copy" /></div>
         </div>

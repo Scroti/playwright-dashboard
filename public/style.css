@@ -459,20 +459,31 @@ button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }
 .fld-trigger { flex: 1 1 300px; min-width: 260px; }
 .fld-spacer { flex: 1; }
 
-.fld-toggle {
-  display: flex;
-  align-items: center;
-  height: 34px; /* match input height (padding + border + line) */
-  padding-top: 22px; /* match input+label combined height alignment */
+/* Buttons on same row as fields — align to bottom (with inputs) */
+.flow-toolbar .row-btn {
+  align-self: flex-end;
+  height: 32px;
+  padding: 0 0.85rem;
+  flex-shrink: 0;
 }
-.fld-btns {
-  display: flex;
-  gap: 0.4rem;
+/* Inline checkbox next to fields — align to bottom, same visual line */
+.row-check {
+  align-self: flex-end;
+  height: 32px;
+  display: inline-flex !important;
   align-items: center;
-  height: 34px;
-  padding-top: 22px;
+  padding: 0 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  color: hsl(var(--foreground)) !important;
+  text-transform: none !important;
+  font-size: 0.8125rem !important;
+  font-weight: 400 !important;
+  margin: 0 !important;
+  gap: 0.45rem;
+  border: 1px solid transparent;
 }
-.fld-btns button { flex-shrink: 0; }
+.row-check:hover { background: hsl(var(--accent)); border-color: hsl(var(--border)); }
 
 /* Slightly bigger name input */
 #flow-name { font-size: 0.95rem; font-weight: 600; }
