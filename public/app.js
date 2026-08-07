@@ -1062,20 +1062,56 @@ async function checkDeployStatus() {
   } catch {}
 }
 
+function ensureDeployOverlay() {
+  let ov = document.getElementById('deploy-overlay');
+  if (ov) return ov;
+  ov = document.createElement('div');
+  ov.id = 'deploy-overlay';
+  ov.innerHTML = `
+    <div class="deploy-inner">
+      <div class="deploy-spinner"></div>
+      <div id="deploy-overlay-title">Deploying…</div>
+      <div id="deploy-overlay-sub">This takes ~5 seconds</div>
+    </div>`;
+  document.body.appendChild(ov);
+  return ov;
+}
+function showDeployOverlay(title, sub) {
+  const ov = ensureDeployOverlay();
+  ov.style.display = 'flex';
+  document.getElementById('deploy-overlay-title').textContent = title || 'Deploying…';
+  document.getElementById('deploy-overlay-sub').textContent = sub || '';
+}
+function hideDeployOverlay() {
+  const ov = document.getElementById('deploy-overlay');
+  if (ov) ov.style.display = 'none';
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try { return await fetch(url, { cache: 'no-store', signal: ctrl.signal }); }
+  finally { clearTimeout(t); }
+}
+
 async function waitForServerAndReload() {
+  showDeployOverlay('Restarting server…', 'Waiting for server to come back up');
   const start = Date.now();
-  while (Date.now() - start < 45000) {
+  const HARD_TIMEOUT = 25000;
+  while (Date.now() - start < HARD_TIMEOUT) {
     try {
-      const r = await fetch('/api/status', { cache: 'no-store' });
+      const r = await fetchWithTimeout('/api/status?_=' + Date.now(), 1500);
       if (r.ok) {
-        toast('Server back up — reloading', 'success', 1500);
-        setTimeout(() => location.reload(), 800);
+        showDeployOverlay('Reloading…', 'Server is back');
+        setTimeout(() => location.reload(), 400);
         return;
       }
     } catch {}
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 700));
   }
-  toast('Server did not come back within 45s — check PM2 logs', 'error', 8000);
+  // Fallback: force reload even if server didn't respond
+  showDeployOverlay('Reloading anyway…', 'Server did not respond in time');
+  setTimeout(() => location.reload(), 500);
 }
 
 $('deploy-btn').onclick = async () => {
@@ -1090,16 +1126,22 @@ $('deploy-btn').onclick = async () => {
     if (r.upToDate) {
       toast('Already up to date', 'info');
       label.textContent = 'Up to date';
-    } else {
-      toast('Pulled — restarting server…', 'info', 3000);
-      label.textContent = 'Restarting…';
-      setTimeout(() => waitForServerAndReload(), r.restartMs || 1000);
-      return; // don't re-enable; page will reload
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+      refreshIcons();
+      return;
     }
+    label.textContent = 'Restarting…';
+    setTimeout(() => waitForServerAndReload(), r.restartMs || 800);
   } catch (e) {
+    // If request failed mid-flight, server likely already restarting — still try to recover
+    if (/Failed to fetch|NetworkError|network|abort/i.test(String(e.message))) {
+      label.textContent = 'Restarting…';
+      waitForServerAndReload();
+      return;
+    }
     toast('Deploy failed: ' + e.message, 'error', 6000);
     label.textContent = 'Deploy update';
-  } finally {
     btn.disabled = false;
     btn.classList.remove('spinning');
     refreshIcons();
