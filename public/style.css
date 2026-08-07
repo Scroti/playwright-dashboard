@@ -240,12 +240,27 @@ h2, h3 { color: hsl(var(--foreground)); margin: 0; }
   border-top: 1px solid hsl(var(--border));
   padding: 0.6rem 0;
   margin: 0 -0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
 }
 .sidebar-footer button {
   width: 100%;
   justify-content: flex-start;
   padding: 0.45rem 0.65rem;
 }
+.deploy-badge {
+  background: hsl(38 92% 50%);
+  color: #000;
+  font-size: 0.6rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  margin-left: auto;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinning svg { animation: spin 800ms linear infinite; }
 
 /* Icons in buttons */
 button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }

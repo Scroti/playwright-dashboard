@@ -1048,6 +1048,64 @@ $('cmdk-input').addEventListener('keydown', (e) => {
   else if (e.key === 'Enter') { e.preventDefault(); runCmdkItem(cmdkCurrentItems[cmdkSelected]); }
 });
 
+// --- Self-deploy ---
+async function checkDeployStatus() {
+  try {
+    const s = await api('/api/deploy/status');
+    const label = $('deploy-label');
+    if (!label) return;
+    if (s.behind) {
+      label.innerHTML = `Deploy update <span class="deploy-badge">${s.behindCount} new</span>`;
+    } else {
+      label.textContent = 'Up to date';
+    }
+  } catch {}
+}
+
+async function waitForServerAndReload() {
+  const start = Date.now();
+  while (Date.now() - start < 45000) {
+    try {
+      const r = await fetch('/api/status', { cache: 'no-store' });
+      if (r.ok) {
+        toast('Server back up — reloading', 'success', 1500);
+        setTimeout(() => location.reload(), 800);
+        return;
+      }
+    } catch {}
+    await new Promise((r) => setTimeout(r, 800));
+  }
+  toast('Server did not come back within 45s — check PM2 logs', 'error', 8000);
+}
+
+$('deploy-btn').onclick = async () => {
+  if (!confirm('Pull latest from GitHub and restart? Site is briefly unavailable (~5s).')) return;
+  const btn = $('deploy-btn');
+  const label = $('deploy-label');
+  btn.disabled = true;
+  btn.classList.add('spinning');
+  label.textContent = 'Pulling…';
+  try {
+    const r = await api('/api/deploy', { method: 'POST' });
+    if (r.upToDate) {
+      toast('Already up to date', 'info');
+      label.textContent = 'Up to date';
+    } else {
+      toast('Pulled — restarting server…', 'info', 3000);
+      label.textContent = 'Restarting…';
+      setTimeout(() => waitForServerAndReload(), r.restartMs || 1000);
+      return; // don't re-enable; page will reload
+    }
+  } catch (e) {
+    toast('Deploy failed: ' + e.message, 'error', 6000);
+    label.textContent = 'Deploy update';
+  } finally {
+    btn.disabled = false;
+    btn.classList.remove('spinning');
+    refreshIcons();
+  }
+};
+
 // --- Global keyboard shortcuts ---
 function isTypingIn(el) {
   return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
@@ -1100,6 +1158,8 @@ $('stop-btn').onclick = stop;
   await loadSessions();
   await loadDevices();
   await loadRuns();
+  checkDeployStatus();
+  setInterval(checkDeployStatus, 60000);
   refreshIcons();
   setInterval(loadRuns, 5000);
   connectWS();

@@ -6,6 +6,10 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+
+const execP = promisify(exec);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, 'data');
@@ -710,6 +714,50 @@ Prefer stable selectors (id, data-* attributes). Use {{varname}} in strings for 
     flows.push(flow);
     await saveJSON(FLOWS_FILE, flows);
     res.json(flow);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- Self-deploy (git pull + pm2 restart) ---
+app.post('/api/deploy', async (_req, res) => {
+  try {
+    log('🚀 Deploy: fetching origin...');
+    const { stdout: fetchOut } = await execP('git fetch origin', { cwd: __dirname, timeout: 20000 });
+    if (fetchOut.trim()) log(fetchOut.trim());
+    log('→ git pull');
+    const { stdout: pullOut, stderr: pullErr } = await execP('git pull --ff-only origin main', { cwd: __dirname, timeout: 30000 });
+    if (pullOut.trim()) log(pullOut.trim());
+    if (pullErr && pullErr.trim() && !/^From /.test(pullErr.trim())) log('stderr: ' + pullErr.trim());
+    const upToDate = /Already up.to.date/i.test(pullOut);
+    res.json({ ok: true, upToDate, output: pullOut, restartMs: upToDate ? 0 : 800 });
+    if (!upToDate) {
+      setTimeout(() => {
+        log('♻ Restarting via PM2...');
+        exec('pm2 restart playwright-dashboard', (err, stdout, stderr) => {
+          if (err) log('Restart error: ' + err.message);
+        });
+      }, 700);
+    } else {
+      log('Nothing to deploy — up to date.');
+    }
+  } catch (e) {
+    log(`Deploy failed: ${e.message.split('\n')[0]}`);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/deploy/status', async (_req, res) => {
+  try {
+    await execP('git fetch origin', { cwd: __dirname, timeout: 15000 });
+    const { stdout: local } = await execP('git rev-parse HEAD', { cwd: __dirname });
+    const { stdout: remote } = await execP('git rev-parse origin/main', { cwd: __dirname });
+    const { stdout: log1 } = await execP('git log -1 --format="%h %s"', { cwd: __dirname });
+    const behind = local.trim() !== remote.trim();
+    let behindCount = 0;
+    if (behind) {
+      const { stdout: cnt } = await execP('git rev-list --count HEAD..origin/main', { cwd: __dirname });
+      behindCount = Number(cnt.trim()) || 0;
+    }
+    res.json({ current: log1.trim(), local: local.trim(), remote: remote.trim(), behind, behindCount });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
