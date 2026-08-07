@@ -94,52 +94,34 @@
         <div class="empty-sub">Pick one from the sidebar, record a new one, or generate with AI.</div>
       </div>
       <div id="editor-content" style="display:none">
-        <div class="flow-header">
-          <div style="flex:1;min-width:220px">
-            <label>Flow name</label>
-            <input id="flow-name" type="text" />
-          </div>
-          <div style="width:150px">
-            <label>Folder</label>
+        <div class="flow-toolbar">
+          <div class="fld fld-grow"><label>Flow name</label><input id="flow-name" type="text" /></div>
+          <div class="fld fld-150"><label>Folder</label>
             <input id="flow-folder" type="text" list="folder-list" placeholder="(no folder)" autocomplete="off" />
             <datalist id="folder-list"></datalist>
           </div>
-          <div style="width:170px">
-            <label>Tags (comma-sep)</label>
-            <input id="flow-tags" type="text" placeholder="scrape, daily" />
+          <div class="fld fld-160"><label>Tags</label><input id="flow-tags" type="text" placeholder="scrape, daily" /></div>
+          <div class="fld fld-80"><label>Loops</label><input id="flow-loops" type="number" min="1" value="1" /></div>
+          <div class="fld-btns">
+            <button id="save-flow" class="primary" title="Save (⌘S)"><i data-lucide="save"></i> Save</button>
+            <button id="duplicate-flow" title="Duplicate (⌘D)"><i data-lucide="copy"></i></button>
+            <button id="export-flow" title="Export JSON"><i data-lucide="download"></i></button>
+            <button id="delete-flow" class="danger" title="Delete flow"><i data-lucide="trash-2"></i></button>
           </div>
-          <div class="loops">
-            <label>Loops</label>
-            <input id="flow-loops" type="number" min="1" value="1" />
-          </div>
-          <button id="save-flow" class="primary" title="Save (⌘S)"><i data-lucide="save"></i> Save</button>
-          <button id="duplicate-flow" title="Duplicate"><i data-lucide="copy"></i></button>
-          <button id="export-flow" title="Export JSON"><i data-lucide="download"></i></button>
-          <button id="delete-flow" class="danger" title="Delete flow"><i data-lucide="trash-2"></i></button>
         </div>
 
-        <div class="flow-header">
-          <div class="session-box">
-            <label>Use session</label>
-            <select id="flow-session"><option value="">(none)</option></select>
-          </div>
-          <div style="width:180px">
-            <label>Device</label>
-            <select id="flow-device"><option value="">Default</option></select>
-          </div>
-          <div>
-            <label>&nbsp;</label>
+        <div class="flow-toolbar">
+          <div class="fld fld-170"><label>Use session</label><select id="flow-session"><option value="">(none)</option></select></div>
+          <div class="fld fld-180"><label>Device</label><select id="flow-device"><option value="">Default</option></select></div>
+          <div class="fld fld-toggle">
             <label class="inline-check"><input type="checkbox" id="flow-human" /> Human-like delays</label>
           </div>
-          <div style="flex:1"></div>
-          <div style="min-width:300px">
-            <label>Public trigger URL</label>
-            <input id="flow-trigger" type="text" readonly title="Click to copy" />
-          </div>
+          <div class="fld-spacer"></div>
+          <div class="fld fld-trigger"><label>Public trigger URL</label><input id="flow-trigger" type="text" readonly title="Click to copy" /></div>
         </div>
 
-        <div class="flow-header">
-          <div class="schedule-box">
+        <div class="flow-toolbar align-top">
+          <div class="fld fld-grow">
             <label>Schedule (cron)</label>
             <input id="flow-schedule" type="text" placeholder="e.g. 0 9 * * *" />
             <div class="cron-presets">
@@ -150,14 +132,7 @@
               <button data-cron="0 9 * * 1">Mondays 9am</button>
             </div>
           </div>
-          <div style="width:170px">
-            <label>Alert after N failures</label>
-            <input id="flow-alert" type="number" min="0" placeholder="0 = off" />
-          </div>
-          <div style="flex:1">
-            <label>Data rows (JSON array — flow runs once per row; use {{key}} in step fields)</label>
-            <textarea id="flow-datarows" rows="2" placeholder='[{"email":"a@x.com","pw":"..."}]'></textarea>
-          </div>
+          <div class="fld fld-170"><label>Alert after N failures</label><input id="flow-alert" type="number" min="0" placeholder="0 = off" /></div>
         </div>
 
         <div id="steps"></div>

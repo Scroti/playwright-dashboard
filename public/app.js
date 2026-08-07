@@ -217,7 +217,7 @@ function renderEditor() {
   $('flow-device').value = f.device || '';
   $('flow-human').checked = !!f.humanLike;
   $('flow-tags').value = (f.tags || []).join(', ');
-  $('flow-datarows').value = f.dataRows || '';
+  // dataRows removed from UI; still preserved server-side
   $('flow-alert').value = f.alertOnFailure || '';
   $('flow-folder').value = f.folder || '';
   const base = settingsCache.publicUrl || location.origin;
@@ -429,7 +429,7 @@ async function saveFlow() {
   f.device = $('flow-device').value;
   f.humanLike = $('flow-human').checked;
   f.tags = $('flow-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
-  f.dataRows = $('flow-datarows').value.trim();
+  // f.dataRows left as-is (UI removed but value preserved)
   f.alertOnFailure = Number($('flow-alert').value) || 0;
   f.folder = $('flow-folder').value.trim();
   await api('/api/flows/' + f.id, { method: 'PUT', body: JSON.stringify(f) });

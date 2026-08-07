@@ -433,10 +433,49 @@ button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }
 }
 .flow-header > div { min-width: 0; }
 .flow-header input[type="text"] { min-width: 180px; }
-#flow-name { font-size: 0.95rem; font-weight: 600; flex: 1; min-width: 220px; }
+#flow-name { font-size: 0.95rem; font-weight: 600; }
 .loops { width: 80px; flex: none; }
 .session-box { width: 160px; }
 .schedule-box { min-width: 260px; flex: 1; }
+
+/* New flow toolbar rows */
+.flow-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.flow-toolbar.align-top { align-items: flex-start; }
+.fld { min-width: 0; display: flex; flex-direction: column; }
+.fld label { margin-bottom: 0.3rem; }
+.fld input, .fld select { width: 100%; }
+.fld-grow { flex: 1; min-width: 220px; }
+.fld-80 { width: 80px; flex: none; }
+.fld-150 { width: 150px; flex: none; }
+.fld-160 { width: 160px; flex: none; }
+.fld-170 { width: 170px; flex: none; }
+.fld-180 { width: 180px; flex: none; }
+.fld-trigger { flex: 1 1 300px; min-width: 260px; }
+.fld-spacer { flex: 1; }
+
+.fld-toggle {
+  display: flex;
+  align-items: center;
+  height: 34px; /* match input height (padding + border + line) */
+  padding-top: 22px; /* match input+label combined height alignment */
+}
+.fld-btns {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  height: 34px;
+  padding-top: 22px;
+}
+.fld-btns button { flex-shrink: 0; }
+
+/* Slightly bigger name input */
+#flow-name { font-size: 0.95rem; font-weight: 600; }
 
 .cron-presets {
   display: flex;
