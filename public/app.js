@@ -397,6 +397,28 @@ function refreshIcons() {
   try { if (window.lucide) window.lucide.createIcons(); } catch {}
 }
 
+// Inject a close X into every modal automatically (except shot-modal which closes on click anywhere)
+function injectModalCloseButtons() {
+  document.querySelectorAll('.modal').forEach((modal) => {
+    if (modal.id === 'shot-modal') return;
+    const content = modal.querySelector('.modal-content');
+    if (!content || content.querySelector('.modal-close-x')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'modal-close-x';
+    btn.title = 'Close';
+    btn.innerHTML = '<i data-lucide="x"></i>';
+    btn.onclick = () => {
+      // If there's a Cancel button with cleanup logic (data-close or id), prefer clicking it
+      const cancelBtn = content.querySelector('.modal-actions [data-close], .modal-actions #picker-cancel-btn, .modal-actions #session-cancel');
+      if (cancelBtn) cancelBtn.click();
+      else modal.classList.remove('on');
+    };
+    content.style.position = 'relative';
+    content.insertBefore(btn, content.firstChild);
+  });
+}
+
 function openNewFlow() {
   $('newflow-name').value = '';
   $('newflow-modal').classList.add('on');
@@ -1214,6 +1236,7 @@ $('run-btn').onclick = run;
 $('stop-btn').onclick = stop;
 
 (async () => {
+  injectModalCloseButtons();
   refreshIcons();
   try { settingsCache = await api('/api/settings'); } catch {}
   await loadFlows();

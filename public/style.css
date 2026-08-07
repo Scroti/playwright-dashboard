@@ -779,7 +779,26 @@ button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }
   margin: 0 0 1rem;
   text-transform: none;
   letter-spacing: 0;
+  padding-right: 2.5rem;
 }
+.modal-close-x {
+  position: absolute !important;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: hsl(var(--muted-foreground)) !important;
+  border-radius: 5px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10;
+}
+.modal-close-x:hover { background: hsl(var(--accent)) !important; color: hsl(var(--foreground)) !important; border-color: hsl(var(--border)) !important; }
+.modal-close-x svg { width: 15px; height: 15px; }
 .modal-actions {
   display: flex;
   gap: 0.5rem;
