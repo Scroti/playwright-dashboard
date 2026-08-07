@@ -397,23 +397,34 @@ function refreshIcons() {
   try { if (window.lucide) window.lucide.createIcons(); } catch {}
 }
 
-// Inject a close X into every modal automatically (except shot-modal which closes on click anywhere)
+// Inject close X into every modal, plus click-outside-to-close behavior
 function injectModalCloseButtons() {
   document.querySelectorAll('.modal').forEach((modal) => {
-    if (modal.id === 'shot-modal') return;
+    if (modal.id === 'shot-modal') return; // closes on any click
     const content = modal.querySelector('.modal-content');
-    if (!content || content.querySelector('.modal-close-x')) return;
+    if (!content) return;
+
+    const closeIt = () => {
+      // If there's a Cancel button with cleanup logic, prefer clicking it
+      const cancelBtn = content.querySelector('.modal-actions [data-close], .modal-actions #picker-cancel-btn, .modal-actions #session-cancel');
+      if (cancelBtn) cancelBtn.click();
+      else modal.classList.remove('on');
+    };
+
+    // Click on backdrop (outside modal-content) → close
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeIt();
+    });
+
+    // Skip X button on cmdk-modal (it has ESC hint already)
+    if (modal.id === 'cmdk-modal') return;
+    if (content.querySelector('.modal-close-x')) return;
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'modal-close-x';
     btn.title = 'Close';
     btn.innerHTML = '<i data-lucide="x"></i>';
-    btn.onclick = () => {
-      // If there's a Cancel button with cleanup logic (data-close or id), prefer clicking it
-      const cancelBtn = content.querySelector('.modal-actions [data-close], .modal-actions #picker-cancel-btn, .modal-actions #session-cancel');
-      if (cancelBtn) cancelBtn.click();
-      else modal.classList.remove('on');
-    };
+    btn.onclick = closeIt;
     content.style.position = 'relative';
     content.insertBefore(btn, content.firstChild);
   });
