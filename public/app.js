@@ -216,6 +216,7 @@ function renderEditor() {
   $('flow-session').value = f.sessionName || '';
   $('flow-device').value = f.device || '';
   $('flow-human').checked = !!f.humanLike;
+  $('flow-stealth').checked = !!f.stealth;
   $('flow-tags').value = (f.tags || []).join(', ');
   // dataRows removed from UI; still preserved server-side
   $('flow-alert').value = f.alertOnFailure || '';
@@ -461,6 +462,7 @@ async function saveFlow() {
   f.sessionName = $('flow-session').value;
   f.device = $('flow-device').value;
   f.humanLike = $('flow-human').checked;
+  f.stealth = $('flow-stealth').checked;
   f.tags = $('flow-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
   // f.dataRows left as-is (UI removed but value preserved)
   f.alertOnFailure = Number($('flow-alert').value) || 0;

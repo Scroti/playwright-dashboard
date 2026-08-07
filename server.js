@@ -336,6 +336,58 @@ async function executeStep(page, step, ctx) {
   }
 }
 
+// --- Stealth mode: hide the usual "I'm a headless browser" tells ---
+// Applied via addInitScript so it runs in every page (including subframes) before
+// any site script. Combined with realistic launch args + context overrides.
+const STEALTH_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--disable-features=IsolateOrigins,site-per-process',
+  '--disable-site-isolation-trials',
+];
+const STEALTH_UA_HEADLESS =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+function stealthInitScript() {
+  // Runs in the page context. Only uses primitives available before any lib loads.
+  // Sources: puppeteer-extra-plugin-stealth (evasions/*), simplified to essentials.
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  // Fake plugins + mimeTypes so length > 0
+  Object.defineProperty(navigator, 'plugins', {
+    get: () => [
+      { name: 'PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chrome PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+      { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer', description: 'Portable Document Format' },
+    ],
+  });
+  Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+  // chrome.runtime — sites check for its presence to distinguish real Chrome
+  window.chrome = window.chrome || {};
+  window.chrome.runtime = window.chrome.runtime || {};
+  // Permissions API — real Chrome returns 'prompt' for notifications when headless returns 'denied'
+  const origQuery = window.navigator.permissions && window.navigator.permissions.query;
+  if (origQuery) {
+    window.navigator.permissions.query = (params) =>
+      params && params.name === 'notifications'
+        ? Promise.resolve({ state: Notification.permission })
+        : origQuery(params);
+  }
+  // WebGL vendor + renderer — headless returns "Google Inc." / "SwiftShader"
+  const getParam = WebGLRenderingContext.prototype.getParameter;
+  WebGLRenderingContext.prototype.getParameter = function (p) {
+    if (p === 37445) return 'Intel Inc.';            // UNMASKED_VENDOR_WEBGL
+    if (p === 37446) return 'Intel Iris OpenGL Engine'; // UNMASKED_RENDERER_WEBGL
+    return getParam.apply(this, [p]);
+  };
+  // Preserve native toString so overrides don't leak "[native code]" mismatches
+  const nativeToString = Function.prototype.toString;
+  Function.prototype.toString = function () {
+    if (this === Function.prototype.toString) return nativeToString.call(nativeToString);
+    return nativeToString.call(this);
+  };
+  // Hairline device — headless leaks: hardwareConcurrency = 1, deviceMemory undefined
+  Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+  Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+}
+
 async function runFlow(flow, options = {}) {
   const runId = crypto.randomUUID();
   state.running = true;
@@ -350,12 +402,26 @@ async function runFlow(flow, options = {}) {
     // On Linux without $DISPLAY we have no X server → force headless regardless of user pref
     const noDisplay = process.platform === 'linux' && !process.env.DISPLAY;
     const headless = !!options.headless || noDisplay;
-    log(`Run "${flow.name}" (headless=${headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''}${noDisplay && !options.headless ? ' — forced (no display)' : ''})`);
-    browser = await chromium.launch({ headless });
+    const stealth = !!flow.stealth;
+    log(`Run "${flow.name}" (headless=${headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''}${stealth ? ', stealth' : ''}${noDisplay && !options.headless ? ' — forced (no display)' : ''})`);
+    const launchOpts = { headless };
+    if (stealth) launchOpts.args = STEALTH_ARGS;
+    browser = await chromium.launch(launchOpts);
 
     const ctxOpts = {};
     if (flow.device && devices[flow.device]) {
       Object.assign(ctxOpts, devices[flow.device]);
+    }
+    if (stealth && !flow.device) {
+      // Only apply desktop defaults if no device preset is chosen (device presets already
+      // supply UA + viewport for their target device).
+      ctxOpts.userAgent = STEALTH_UA_HEADLESS;
+      ctxOpts.viewport = { width: 1920, height: 1080 };
+      ctxOpts.locale = 'en-US';
+      ctxOpts.timezoneId = 'Europe/Berlin';
+      ctxOpts.deviceScaleFactor = 1;
+      ctxOpts.hasTouch = false;
+      ctxOpts.isMobile = false;
     }
     if (flow.sessionName) {
       const file = path.join(SESSIONS_DIR, flow.sessionName + '.json');
@@ -366,6 +432,7 @@ async function runFlow(flow, options = {}) {
       } catch { log(`Session "${flow.sessionName}" not found — running without`); }
     }
     const context = await browser.newContext(ctxOpts);
+    if (stealth) await context.addInitScript(stealthInitScript);
     const page = await context.newPage();
 
     if (options.livePreview !== false) cdp = await startPreview(page);
