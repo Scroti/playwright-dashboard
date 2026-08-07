@@ -322,13 +322,30 @@ async function executeStep(page, step, ctx) {
       const method = (step.method || 'GET').toUpperCase();
       let headers = {};
       try { if (step.headers) headers = JSON.parse(step.headers); } catch { log('  ! invalid JSON headers, ignoring'); }
-      const opts = { method, headers };
-      if (step.body && method !== 'GET') opts.body = step.body;
-      const r = await fetch(step.url, opts);
-      const txt = await r.text();
+      let status, txt;
+      // If step.impersonate is set (e.g. "chrome116", "firefox109", "safari15_5"),
+      // shell out to curl-impersonate so the TLS/JA3 fingerprint matches a real browser.
+      if (step.impersonate) {
+        const result = await curlImpersonate({
+          preset: step.impersonate,
+          method, url: step.url, headers,
+          body: (step.body && method !== 'GET') ? step.body : null,
+        });
+        status = result.status;
+        txt = result.body;
+        log(`→ http (impersonate:${step.impersonate}) ${method} ${step.url} → ${status}${step.saveAs ? ' (saved as ' + step.saveAs + ')' : ''}`);
+      } else {
+        const opts = { method, headers };
+        if (step.body && method !== 'GET') opts.body = step.body;
+        const r = await fetch(step.url, opts);
+        status = r.status;
+        txt = await r.text();
+        log(`→ http ${method} ${step.url} → ${status}${step.saveAs ? ' (saved as ' + step.saveAs + ')' : ''}`);
+      }
       if (step.saveAs) ctx.extracted[step.saveAs] = txt;
-      log(`→ http ${method} ${step.url} → ${r.status}${step.saveAs ? ' (saved as ' + step.saveAs + ')' : ''}`);
-      if (!r.ok && step.failOnError !== false) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      if ((status < 200 || status >= 400) && step.failOnError !== false) {
+        throw new Error(`HTTP ${status}`);
+      }
       break;
     }
     default:
@@ -388,6 +405,39 @@ function stealthInitScript() {
   Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 }
 
+// Shells out to curl-impersonate for TLS/JA3-matching HTTP calls.
+// Presets map to installed binaries (curl_chrome116, curl_ff109, etc.).
+// If the binary isn't on PATH, falls back to native fetch with a warning log.
+const CURL_IMPERSONATE_PRESETS = {
+  chrome116: 'curl_chrome116',
+  chrome110: 'curl_chrome110',
+  chrome104: 'curl_chrome104',
+  firefox109: 'curl_ff109',
+  firefox102: 'curl_ff102',
+  safari15_5: 'curl_safari15_5',
+  edge99: 'curl_edge99',
+};
+async function curlImpersonate({ preset, method, url, headers, body }) {
+  const bin = CURL_IMPERSONATE_PRESETS[preset] || preset;
+  const args = ['-sS', '-X', method, '-w', '\n__STATUS__%{http_code}', url];
+  for (const [k, v] of Object.entries(headers || {})) args.push('-H', `${k}: ${v}`);
+  if (body != null) args.push('--data-binary', body);
+  try {
+    const { stdout } = await execP(`${bin} ${args.map((a) => `'${String(a).replace(/'/g, "'\\''")}'`).join(' ')}`, { timeout: 30000, maxBuffer: 10 * 1024 * 1024 });
+    const m = stdout.match(/\n__STATUS__(\d+)$/);
+    const status = m ? Number(m[1]) : 0;
+    const bodyOut = m ? stdout.slice(0, m.index) : stdout;
+    return { status, body: bodyOut };
+  } catch (e) {
+    if (/not found|ENOENT/i.test(e.message)) {
+      log(`  ! curl-impersonate binary "${bin}" not found — falling back to native fetch. Install: https://github.com/lwthiker/curl-impersonate`);
+      const r = await fetch(url, { method, headers, body: body || undefined });
+      return { status: r.status, body: await r.text() };
+    }
+    throw e;
+  }
+}
+
 async function runFlow(flow, options = {}) {
   const runId = crypto.randomUUID();
   state.running = true;
@@ -406,7 +456,19 @@ async function runFlow(flow, options = {}) {
     log(`Run "${flow.name}" (headless=${headless}${flow.device ? `, device=${flow.device}` : ''}${flow.humanLike ? ', human-like' : ''}${stealth ? ', stealth' : ''}${noDisplay && !options.headless ? ' — forced (no display)' : ''})`);
     const launchOpts = { headless };
     if (stealth) launchOpts.args = STEALTH_ARGS;
-    browser = await chromium.launch(launchOpts);
+    if (stealth) {
+      // Prefer real installed Chrome (matches real JA3/TLS fingerprint).
+      // Falls back to bundled Chromium if Chrome isn't available on the host.
+      try {
+        browser = await chromium.launch({ ...launchOpts, channel: 'chrome' });
+        log('  stealth: using real Chrome channel (matching JA3/TLS)');
+      } catch (e) {
+        log(`  stealth: real Chrome not available (${e.message.split('\n')[0]}) — falling back to Chromium. Install with: npx playwright install chrome`);
+        browser = await chromium.launch(launchOpts);
+      }
+    } else {
+      browser = await chromium.launch(launchOpts);
+    }
 
     const ctxOpts = {};
     if (flow.device && devices[flow.device]) {

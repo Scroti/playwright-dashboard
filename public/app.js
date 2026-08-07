@@ -19,7 +19,7 @@ const STEP_TYPES = {
   screenshot: { fields: [['name', 'text', 'after-click'], ['fullPage', 'checkbox', false]] },
   extract:    { fields: [['selector', 'text', '.price', 'full'], ['name', 'text', 'price']] },
   expect:     { fields: [['check', 'select:exists|not-exists|text-contains|text-equals|url-contains|url-equals', 'exists'], ['selector', 'text', '.error', 'full'], ['text', 'text', '', 'full']] },
-  http:       { fields: [['method', 'select:GET|POST|PUT|PATCH|DELETE', 'GET'], ['url', 'text', 'https://api.example.com/x', 'full'], ['headers', 'textarea', '{}', 'full'], ['body', 'textarea', '', 'full'], ['saveAs', 'text', 'result']] },
+  http:       { fields: [['method', 'select:GET|POST|PUT|PATCH|DELETE', 'GET'], ['url', 'text', 'https://api.example.com/x', 'full'], ['headers', 'textarea', '{}', 'full'], ['body', 'textarea', '', 'full'], ['saveAs', 'text', 'result'], ['impersonate', 'select:|chrome116|chrome110|chrome104|firefox109|firefox102|safari15_5|edge99', '']] },
   callFlow:   { fields: [['flowId', 'flowSelect', '', 'full']] },
   if:         { fields: [['selector', 'text', '.error', 'full'], ['text', 'text', '', 'full']], hasBranches: true },
   try:        { fields: [], hasSteps: true },
