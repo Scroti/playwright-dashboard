@@ -1094,36 +1094,52 @@ async function fetchWithTimeout(url, timeoutMs) {
   finally { clearTimeout(t); }
 }
 
+function updateDeploySub(text) {
+  const el = document.getElementById('deploy-overlay-sub');
+  if (el) el.textContent = text;
+}
+
 async function waitForServerAndReload() {
   showDeployOverlay('Restarting server…', 'Waiting for server to come back up');
   const start = Date.now();
-  const HARD_TIMEOUT = 25000;
+  const HARD_TIMEOUT = 90000; // 90s — Cloudflare 502s can linger during PM2 restart
+  let attempts = 0;
   while (Date.now() - start < HARD_TIMEOUT) {
+    attempts++;
+    const elapsed = Math.floor((Date.now() - start) / 1000);
+    updateDeploySub(`Waiting… ${elapsed}s (attempt ${attempts})`);
     try {
-      const r = await fetchWithTimeout('/api/status?_=' + Date.now(), 1500);
+      const r = await fetchWithTimeout('/api/status?_=' + Date.now(), 2500);
       if (r.ok) {
-        showDeployOverlay('Reloading…', 'Server is back');
-        setTimeout(() => location.reload(), 400);
-        return;
+        // Verify body is actually our JSON, not Cloudflare's HTML error page
+        try {
+          const data = await r.json();
+          if (typeof data.running !== 'undefined') {
+            showDeployOverlay('Reloading…', 'Server is back ✓');
+            setTimeout(() => location.reload(), 400);
+            return;
+          }
+        } catch {}
       }
     } catch {}
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, 1000));
   }
-  // Fallback: force reload even if server didn't respond
-  showDeployOverlay('Reloading anyway…', 'Server did not respond in time');
-  setTimeout(() => location.reload(), 500);
+  showDeployOverlay('Timeout', 'Reloading anyway — refresh again if needed');
+  setTimeout(() => location.reload(), 1500);
 }
 
 $('deploy-btn').onclick = async () => {
-  if (!confirm('Pull latest from GitHub and restart? Site is briefly unavailable (~5s).')) return;
+  if (!confirm('Pull latest from GitHub and restart? Site is briefly unavailable (~5-15s).')) return;
   const btn = $('deploy-btn');
   const label = $('deploy-label');
   btn.disabled = true;
   btn.classList.add('spinning');
   label.textContent = 'Pulling…';
+  showDeployOverlay('Deploying…', 'Pulling latest changes');
   try {
     const r = await api('/api/deploy', { method: 'POST' });
     if (r.upToDate) {
+      hideDeployOverlay();
       toast('Already up to date', 'info');
       label.textContent = 'Up to date';
       btn.disabled = false;
@@ -1132,14 +1148,17 @@ $('deploy-btn').onclick = async () => {
       return;
     }
     label.textContent = 'Restarting…';
+    // The POST returned before restart is triggered. Wait a moment then poll.
     setTimeout(() => waitForServerAndReload(), r.restartMs || 800);
   } catch (e) {
-    // If request failed mid-flight, server likely already restarting — still try to recover
-    if (/Failed to fetch|NetworkError|network|abort/i.test(String(e.message))) {
+    // 502 Bad Gateway / network / abort → server is restarting or Cloudflare can't reach it
+    // Any of these means we should just wait for the server to come back
+    if (/gateway|failed to fetch|networkerror|network|abort|timeout/i.test(String(e.message))) {
       label.textContent = 'Restarting…';
       waitForServerAndReload();
       return;
     }
+    hideDeployOverlay();
     toast('Deploy failed: ' + e.message, 'error', 6000);
     label.textContent = 'Deploy update';
     btn.disabled = false;

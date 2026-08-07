@@ -730,12 +730,14 @@ app.post('/api/deploy', async (_req, res) => {
     const upToDate = /Already up.to.date/i.test(pullOut);
     res.json({ ok: true, upToDate, output: pullOut, restartMs: upToDate ? 0 : 800 });
     if (!upToDate) {
+      // Detached process: won't be killed by pm2 restart of parent
       setTimeout(() => {
-        log('♻ Restarting via PM2...');
-        exec('pm2 restart playwright-dashboard', (err, stdout, stderr) => {
-          if (err) log('Restart error: ' + err.message);
-        });
-      }, 700);
+        log('♻ Restarting via PM2 (detached)...');
+        try {
+          const child = exec('pm2 restart playwright-dashboard', { detached: true });
+          child.unref();
+        } catch (e) { log('Restart error: ' + e.message); }
+      }, 500);
     } else {
       log('Nothing to deploy — up to date.');
     }
