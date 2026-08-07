@@ -182,6 +182,27 @@ h2, h3 { color: hsl(var(--foreground)); margin: 0; }
   pointer-events: none;
 }
 
+.cmdk-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  margin-bottom: 0.75rem;
+  width: 100%;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: calc(var(--radius) - 2px);
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+.cmdk-trigger:hover { color: hsl(var(--foreground)); border-color: hsl(var(--muted-foreground) / 0.4); }
+.cmdk-trigger svg { width: 14px; height: 14px; flex-shrink: 0; }
+.cmdk-trigger span:not(.kbd) { flex: 1; text-align: left; }
+.cmdk-trigger .kbd { margin-right: 0; }
+.cmdk-trigger .kbd-ctrl { margin-right: 2px; }
+
 .sidebar-actions {
   display: flex;
   flex-direction: column;

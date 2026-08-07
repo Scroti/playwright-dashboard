@@ -940,6 +940,7 @@ function escapeHtml(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp
 function escapeAttr(s) { return String(s).replace(/"/g, '&quot;'); }
 
 $('close-flow').onclick = () => { currentFlowId = null; renderFlows(); renderEditor(); refreshIcons(); };
+$('cmdk-trigger').onclick = () => openCmdk();
 $('new-flow').onclick = openNewFlow;
 
 async function duplicateFlow() {
