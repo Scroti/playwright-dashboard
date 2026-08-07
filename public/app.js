@@ -641,13 +641,25 @@ let pickerViewport = { width: 1280, height: 720 };
 $('picker-open').onclick = async () => {
   const url = $('picker-url').value.trim();
   if (!url) return toast('URL required', 'error');
-  try {
+  const startPicker = async () => {
     const r = await api('/api/picker/start', { method: 'POST', body: JSON.stringify({ url }) });
     if (r.viewport) pickerViewport = r.viewport;
     $('picker-setup').style.display = 'none';
     $('picker-stream-wrap').style.display = '';
     toast('Loading page…', 'info', 2000);
-  } catch (e) { toast(e.message, 'error'); pickerTargetInput = null; }
+  };
+  try {
+    await startPicker();
+  } catch (e) {
+    if (String(e.message).toLowerCase().includes('already')) {
+      // Auto-recover from stuck picker
+      try { await api('/api/picker/cancel', { method: 'POST' }); await startPicker(); }
+      catch (e2) { toast(e2.message, 'error'); pickerTargetInput = null; }
+    } else {
+      toast(e.message, 'error');
+      pickerTargetInput = null;
+    }
+  }
 };
 $('picker-cancel-btn').onclick = async () => {
   try { await api('/api/picker/cancel', { method: 'POST' }); } catch {}
