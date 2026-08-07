@@ -1132,73 +1132,104 @@ function updateDeploySub(text) {
   const el = document.getElementById('deploy-overlay-sub');
   if (el) el.textContent = text;
 }
+function updateDeployTitle(text) {
+  const el = document.getElementById('deploy-overlay-title');
+  if (el) el.textContent = text;
+}
 
-async function waitForServerAndReload() {
-  showDeployOverlay('Restarting server…', 'Waiting for server to come back up');
+// Reload with cache-bust to avoid Cloudflare serving cached 502 page
+function reloadFresh() {
+  window.location.href = '/?_=' + Date.now();
+}
+
+async function pollServerReady(timeoutMs = 25000) {
   const start = Date.now();
-  const HARD_TIMEOUT = 90000; // 90s — Cloudflare 502s can linger during PM2 restart
-  let attempts = 0;
-  while (Date.now() - start < HARD_TIMEOUT) {
-    attempts++;
-    const elapsed = Math.floor((Date.now() - start) / 1000);
-    updateDeploySub(`Waiting… ${elapsed}s (attempt ${attempts})`);
+  let consecutive = 0;
+  while (Date.now() - start < timeoutMs) {
     try {
-      const r = await fetchWithTimeout('/api/status?_=' + Date.now(), 2500);
+      const r = await fetchWithTimeout('/api/status?_=' + Date.now(), 2000);
       if (r.ok) {
-        // Verify body is actually our JSON, not Cloudflare's HTML error page
-        try {
-          const data = await r.json();
-          if (typeof data.running !== 'undefined') {
-            showDeployOverlay('Reloading…', 'Server is back ✓');
-            setTimeout(() => location.reload(), 400);
-            return;
-          }
-        } catch {}
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 1000));
+        const data = await r.json().catch(() => null);
+        if (data && typeof data.running !== 'undefined') {
+          consecutive++;
+          if (consecutive >= 2) return true; // two consecutive successes = tunnel stable
+        } else { consecutive = 0; }
+      } else { consecutive = 0; }
+    } catch { consecutive = 0; }
+    await new Promise((r) => setTimeout(r, 600));
   }
-  showDeployOverlay('Timeout', 'Reloading anyway — refresh again if needed');
-  setTimeout(() => location.reload(), 1500);
+  return false;
 }
 
 $('deploy-btn').onclick = async () => {
-  if (!confirm('Pull latest from GitHub and restart? Site is briefly unavailable (~5-15s).')) return;
+  if (!confirm('Pull latest from GitHub and restart? Site briefly unavailable (~8s).')) return;
   const btn = $('deploy-btn');
   const label = $('deploy-label');
   btn.disabled = true;
   btn.classList.add('spinning');
-  label.textContent = 'Pulling…';
-  showDeployOverlay('Deploying…', 'Pulling latest changes');
-  try {
-    const r = await api('/api/deploy', { method: 'POST' });
-    if (r.upToDate) {
-      hideDeployOverlay();
-      toast('Already up to date', 'info');
-      label.textContent = 'Up to date';
-      btn.disabled = false;
-      btn.classList.remove('spinning');
-      refreshIcons();
-      return;
-    }
-    label.textContent = 'Restarting…';
-    // The POST returned before restart is triggered. Wait a moment then poll.
-    setTimeout(() => waitForServerAndReload(), r.restartMs || 800);
-  } catch (e) {
-    // 502 Bad Gateway / network / abort → server is restarting or Cloudflare can't reach it
-    // Any of these means we should just wait for the server to come back
-    if (/gateway|failed to fetch|networkerror|network|abort|timeout/i.test(String(e.message))) {
-      label.textContent = 'Restarting…';
-      waitForServerAndReload();
-      return;
-    }
+  label.textContent = 'Deploying…';
+
+  // 1) Show overlay IMMEDIATELY, before any await
+  showDeployOverlay('Deploying…', 'Please don\'t close or refresh this tab');
+
+  // 2) Kick off deploy request in the background — we don't strictly need its response
+  let upToDate = false;
+  const deployFetch = fetch('/api/deploy', { method: 'POST' })
+    .then((r) => r.json())
+    .then((data) => { if (data && data.upToDate) upToDate = true; return data; })
+    .catch(() => null);
+
+  // Wait max 3s for the initial deploy response (git pull result)
+  await Promise.race([
+    deployFetch,
+    new Promise((r) => setTimeout(r, 3000)),
+  ]);
+
+  if (upToDate) {
     hideDeployOverlay();
-    toast('Deploy failed: ' + e.message, 'error', 6000);
-    label.textContent = 'Deploy update';
+    toast('Already up to date', 'info');
+    label.textContent = 'Up to date';
     btn.disabled = false;
     btn.classList.remove('spinning');
     refreshIcons();
+    return;
   }
+
+  // 3) Start countdown timer for guaranteed reload after 14s (fallback)
+  updateDeployTitle('Server restarting…');
+  let stopped = false;
+  let secs = 14;
+  updateDeploySub(`Reloading automatically in ${secs}s`);
+  const interval = setInterval(() => {
+    if (stopped) return;
+    secs--;
+    if (secs > 0) updateDeploySub(`Reloading automatically in ${secs}s`);
+    else {
+      stopped = true;
+      clearInterval(interval);
+      updateDeployTitle('Reloading…');
+      updateDeploySub('');
+      reloadFresh();
+    }
+  }, 1000);
+
+  // 4) In parallel, poll for server — reload sooner if server comes back
+  (async () => {
+    // Wait 2.5s before starting to poll (give server time to actually restart)
+    await new Promise((r) => setTimeout(r, 2500));
+    const ready = await pollServerReady(12000);
+    if (stopped) return; // countdown already fired
+    stopped = true;
+    clearInterval(interval);
+    if (ready) {
+      updateDeployTitle('Server ready — reloading');
+      updateDeploySub('');
+      await new Promise((r) => setTimeout(r, 500));
+    } else {
+      updateDeployTitle('Reloading anyway');
+    }
+    reloadFresh();
+  })();
 };
 
 // --- Global keyboard shortcuts ---
