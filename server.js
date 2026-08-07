@@ -418,16 +418,17 @@ const RECORDER_SCRIPT = () => {
   }, true);
 };
 
+const RECORDER_VIEWPORT = { width: 1280, height: 720 };
 let recorder = null;
 app.post('/api/record/start', async (req, res) => {
   if (recorder) return res.status(409).json({ error: 'already recording' });
   const { url } = req.body || {};
   if (!url) return res.status(400).json({ error: 'url required' });
   try {
-    const browser = await chromium.launch({ headless: false });
-    const context = await browser.newContext();
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: RECORDER_VIEWPORT });
     const page = await context.newPage();
-    recorder = { browser, context, page, steps: [] };
+    recorder = { browser, context, page, steps: [], viewport: RECORDER_VIEWPORT };
     await page.exposeFunction('__recStep', (step) => {
       const last = recorder.steps[recorder.steps.length - 1];
       if (last && last.type === 'type' && step.type === 'type' && last.selector === step.selector) {
@@ -449,12 +450,63 @@ app.post('/api/record/start', async (req, res) => {
       }
     });
     await page.goto(url);
-    res.json({ ok: true });
+
+    // Streamed CDP screencast so the user can drive the browser from the web UI
+    const cdp = await context.newCDPSession(page);
+    recorder.cdp = cdp;
+    cdp.on('Page.screencastFrame', async (frame) => {
+      broadcast({ type: 'record-frame', data: frame.data });
+      try { await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }); } catch {}
+    });
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg', quality: 70,
+      maxWidth: RECORDER_VIEWPORT.width, maxHeight: RECORDER_VIEWPORT.height,
+      everyNthFrame: 1,
+    });
+    try {
+      const buf = await page.screenshot({ type: 'jpeg', quality: 70 });
+      broadcast({ type: 'record-frame', data: buf.toString('base64') });
+    } catch {}
+    res.json({ ok: true, viewport: RECORDER_VIEWPORT });
   } catch (e) {
     if (recorder?.browser) await recorder.browser.close().catch(() => {});
     recorder = null;
     res.status(500).json({ error: e.message });
   }
+});
+app.post('/api/record/click', async (req, res) => {
+  if (!recorder) return res.status(404).json({ error: 'not recording' });
+  const { x, y } = req.body || {};
+  try {
+    await recorder.page.mouse.click(Number(x) || 0, Number(y) || 0);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/record/type', async (req, res) => {
+  if (!recorder) return res.status(404).json({ error: 'not recording' });
+  const { key, text } = req.body || {};
+  try {
+    if (text) await recorder.page.keyboard.type(text);
+    else if (key) await recorder.page.keyboard.press(key);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/record/scroll', async (req, res) => {
+  if (!recorder) return res.status(404).json({ error: 'not recording' });
+  const { dx = 0, dy = 0 } = req.body || {};
+  try {
+    await recorder.page.evaluate(({ x, y }) => window.scrollBy(x, y), { x: Number(dx), y: Number(dy) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/record/goto', async (req, res) => {
+  if (!recorder) return res.status(404).json({ error: 'not recording' });
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url required' });
+  try {
+    await recorder.page.goto(url);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/record/stop', async (_req, res) => {
   if (!recorder) return res.status(404).json({ error: 'not recording' });
@@ -550,19 +602,72 @@ app.post('/api/picker/cancel', async (_req, res) => {
   res.json({ ok: true });
 });
 
-// --- Session recording (login capture) ---
+// --- Session recording (login capture — headless + CDP screencast) ---
+const SESSION_VIEWPORT = { width: 1280, height: 720 };
 const sessionRec = {};
 app.post('/api/sessions/start', async (req, res) => {
   const { url, name } = req.body || {};
   if (!url || !name) return res.status(400).json({ error: 'url and name required' });
   try {
-    const browser = await chromium.launch({ headless: false });
-    const context = await browser.newContext();
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: SESSION_VIEWPORT });
     const page = await context.newPage();
     await page.goto(url);
     const id = crypto.randomUUID();
-    sessionRec[id] = { browser, context, name };
-    res.json({ id });
+    const cdp = await context.newCDPSession(page);
+    cdp.on('Page.screencastFrame', async (frame) => {
+      broadcast({ type: 'session-frame', id, data: frame.data });
+      try { await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }); } catch {}
+    });
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg', quality: 70,
+      maxWidth: SESSION_VIEWPORT.width, maxHeight: SESSION_VIEWPORT.height,
+      everyNthFrame: 1,
+    });
+    try {
+      const buf = await page.screenshot({ type: 'jpeg', quality: 70 });
+      broadcast({ type: 'session-frame', id, data: buf.toString('base64') });
+    } catch {}
+    sessionRec[id] = { browser, context, page, cdp, name, viewport: SESSION_VIEWPORT };
+    res.json({ id, viewport: SESSION_VIEWPORT });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/sessions/click/:id', async (req, res) => {
+  const s = sessionRec[req.params.id];
+  if (!s) return res.status(404).json({ error: 'session not found' });
+  const { x, y } = req.body || {};
+  try {
+    await s.page.mouse.click(Number(x) || 0, Number(y) || 0);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/sessions/type/:id', async (req, res) => {
+  const s = sessionRec[req.params.id];
+  if (!s) return res.status(404).json({ error: 'session not found' });
+  const { key, text } = req.body || {};
+  try {
+    if (text) await s.page.keyboard.type(text);
+    else if (key) await s.page.keyboard.press(key);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/sessions/scroll/:id', async (req, res) => {
+  const s = sessionRec[req.params.id];
+  if (!s) return res.status(404).json({ error: 'session not found' });
+  const { dx = 0, dy = 0 } = req.body || {};
+  try {
+    await s.page.evaluate(({ x, y }) => window.scrollBy(x, y), { x: Number(dx), y: Number(dy) });
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/sessions/goto/:id', async (req, res) => {
+  const s = sessionRec[req.params.id];
+  if (!s) return res.status(404).json({ error: 'session not found' });
+  const { url } = req.body || {};
+  if (!url) return res.status(400).json({ error: 'url required' });
+  try {
+    await s.page.goto(url);
+    res.json({ ok: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/sessions/save/:id', async (req, res) => {

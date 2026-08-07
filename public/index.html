@@ -212,35 +212,73 @@
   </div>
 
   <div id="record-modal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:1350px">
       <h2><i data-lucide="mic"></i> Record a new flow</h2>
-      <label>Start URL</label>
-      <input id="record-url" type="text" placeholder="https://example.com" />
-      <div class="hint">A Chromium window opens. Whatever you click / type is captured. When done, hit Stop.</div>
-      <div id="record-live" style="display:none">
-        <label style="margin-top:0.75rem">Captured steps</label>
-        <div id="record-steps" class="recorded-steps"></div>
+      <div id="record-setup">
+        <label>Start URL</label>
+        <input id="record-url" type="text" placeholder="https://example.com" />
+        <div class="hint">A headless browser opens on the server and streams here. Click / type on the stream — your actions are captured as steps.</div>
+        <div class="modal-actions">
+          <button data-close="record-modal">Cancel</button>
+          <button id="record-start" class="primary"><i data-lucide="circle-dot"></i> Start recording</button>
+        </div>
       </div>
-      <div class="modal-actions">
-        <button data-close="record-modal">Cancel</button>
-        <button id="record-start" class="primary"><i data-lucide="circle-dot"></i> Start recording</button>
-        <button id="record-stop" class="danger" style="display:none"><i data-lucide="square"></i> Stop &amp; save</button>
+      <div id="record-live" style="display:none">
+        <div class="stream-addressbar">
+          <input id="record-addr" type="text" placeholder="Type URL and press Enter to navigate" />
+          <button id="record-go" class="small">Go</button>
+        </div>
+        <div class="stream-layout">
+          <div class="picker-stream-box">
+            <img id="record-stream" alt="" tabindex="0" />
+            <div id="record-loading" class="picker-loading">
+              <div class="spinner"></div>
+              <div>Loading page…</div>
+            </div>
+          </div>
+          <div class="stream-side">
+            <label>Captured steps</label>
+            <div id="record-steps" class="recorded-steps"></div>
+          </div>
+        </div>
+        <div class="hint">Click on the stream to interact. Focus the stream (click once) then type — keys forward to the browser. Scroll wheel scrolls. Enter, Tab, Backspace, arrows all work.</div>
+        <div class="modal-actions">
+          <button id="record-stop" class="danger"><i data-lucide="square"></i> Stop &amp; save</button>
+        </div>
       </div>
     </div>
   </div>
 
   <div id="session-modal" class="modal">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width:1350px">
       <h2><i data-lucide="key-round"></i> Capture login session</h2>
-      <label>Session name</label>
-      <input id="session-name" type="text" placeholder="my-site-prod" />
-      <label style="margin-top:0.5rem">Login URL</label>
-      <input id="session-url" type="text" placeholder="https://example.com/login" />
-      <div class="hint">A browser opens — log in manually, come back and hit "I'm logged in". Cookies + storage will be saved.</div>
-      <div class="modal-actions">
-        <button data-close="session-modal" id="session-cancel">Cancel</button>
-        <button id="session-start" class="primary"><i data-lucide="external-link"></i> Open browser</button>
-        <button id="session-save" class="primary" style="display:none"><i data-lucide="check"></i> I'm logged in — save</button>
+      <div id="session-setup">
+        <label>Session name</label>
+        <input id="session-name" type="text" placeholder="my-site-prod" />
+        <label style="margin-top:0.5rem">Login URL</label>
+        <input id="session-url" type="text" placeholder="https://example.com/login" />
+        <div class="hint">A headless browser opens on the server and streams here. Log in on the stream, then hit "I'm logged in — save".</div>
+        <div class="modal-actions">
+          <button data-close="session-modal" id="session-cancel">Cancel</button>
+          <button id="session-start" class="primary"><i data-lucide="external-link"></i> Open browser</button>
+        </div>
+      </div>
+      <div id="session-live" style="display:none">
+        <div class="stream-addressbar">
+          <input id="session-addr" type="text" placeholder="Type URL and press Enter to navigate" />
+          <button id="session-go" class="small">Go</button>
+        </div>
+        <div class="picker-stream-box">
+          <img id="session-stream" alt="" tabindex="0" />
+          <div id="session-loading" class="picker-loading">
+            <div class="spinner"></div>
+            <div>Loading page…</div>
+          </div>
+        </div>
+        <div class="hint">Click on the stream to interact. Focus the stream then type — keys forward to the browser.</div>
+        <div class="modal-actions">
+          <button id="session-save" class="primary"><i data-lucide="check"></i> I'm logged in — save</button>
+        </div>
       </div>
     </div>
   </div>

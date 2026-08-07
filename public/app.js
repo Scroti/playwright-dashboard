@@ -552,27 +552,39 @@ $('save-settings').onclick = async () => {
   if ($('setting-password').value) toast('Password set — next page load will prompt for it.', 'info', 5000);
 };
 
+// --- Recorder (headless + streamed) ---
+let recorderViewport = { width: 1280, height: 720 };
+let recording = false;
 $('record-flow').onclick = () => {
   $('record-url').value = 'https://';
+  $('record-setup').style.display = '';
   $('record-live').style.display = 'none';
   $('record-steps').innerHTML = '';
-  $('record-start').style.display = '';
-  $('record-stop').style.display = 'none';
+  $('record-stream').src = '';
+  const load = $('record-loading');
+  if (load) load.classList.remove('hide');
+  recording = false;
   $('record-modal').classList.add('on');
+  setTimeout(() => $('record-url').focus(), 50);
 };
 $('record-start').onclick = async () => {
   const url = $('record-url').value.trim();
   if (!url) return alert('URL required');
   try {
-    await api('/api/record/start', { method: 'POST', body: JSON.stringify({ url }) });
-    $('record-start').style.display = 'none';
-    $('record-stop').style.display = '';
+    const r = await api('/api/record/start', { method: 'POST', body: JSON.stringify({ url }) });
+    if (r.viewport) recorderViewport = r.viewport;
+    recording = true;
+    $('record-setup').style.display = 'none';
     $('record-live').style.display = '';
+    $('record-addr').value = url;
+    setTimeout(() => $('record-stream').focus(), 100);
+    toast('Loading page…', 'info', 2000);
   } catch (e) { alert(e.message); }
 };
 $('record-stop').onclick = async () => {
   try {
     const { steps } = await api('/api/record/stop', { method: 'POST' });
+    recording = false;
     const flow = await api('/api/flows', { method: 'POST', body: JSON.stringify({ name: 'Recorded ' + new Date().toLocaleTimeString(), loops: 1, steps }) });
     closeModal('record-modal');
     currentFlowId = flow.id;
@@ -580,30 +592,87 @@ $('record-stop').onclick = async () => {
   } catch (e) { alert(e.message); }
 };
 async function cancelRecording() {
-  if ($('record-stop').style.display !== 'none') {
+  if (recording) {
     try { await api('/api/record/stop', { method: 'POST' }); } catch {}
+    recording = false;
   }
   closeModal('record-modal');
 }
 document.querySelector('#record-modal [data-close="record-modal"]').onclick = cancelRecording;
 
+function streamCoords(img, e, viewport) {
+  const rect = img.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * viewport.width;
+  const y = ((e.clientY - rect.top) / rect.height) * viewport.height;
+  return { x, y };
+}
+function mapKey(e) {
+  const special = {
+    Enter: 'Enter', Tab: 'Tab', Backspace: 'Backspace', Delete: 'Delete',
+    ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight', ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown',
+    Escape: 'Escape', Home: 'Home', End: 'End', PageUp: 'PageUp', PageDown: 'PageDown',
+  };
+  if (special[e.key]) return { key: special[e.key] };
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) return { text: e.key };
+  return null;
+}
+
+$('record-stream').addEventListener('click', async (e) => {
+  if (!recording) return;
+  const { x, y } = streamCoords(e.target, e, recorderViewport);
+  try { await api('/api/record/click', { method: 'POST', body: JSON.stringify({ x, y }) }); }
+  catch (err) { toast(err.message, 'error'); }
+});
+$('record-stream').addEventListener('wheel', async (e) => {
+  if (!recording) return;
+  e.preventDefault();
+  try { await api('/api/record/scroll', { method: 'POST', body: JSON.stringify({ dx: e.deltaX, dy: e.deltaY }) }); }
+  catch {}
+}, { passive: false });
+$('record-stream').addEventListener('keydown', async (e) => {
+  if (!recording) return;
+  const m = mapKey(e);
+  if (!m) return;
+  e.preventDefault();
+  try { await api('/api/record/type', { method: 'POST', body: JSON.stringify(m) }); }
+  catch {}
+});
+$('record-go').onclick = async () => {
+  if (!recording) return;
+  const url = $('record-addr').value.trim();
+  if (!url) return;
+  try { await api('/api/record/goto', { method: 'POST', body: JSON.stringify({ url }) }); }
+  catch (e) { toast(e.message, 'error'); }
+};
+$('record-addr').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('record-go').click(); } });
+
+// --- Session capture (headless + streamed) ---
+let sessionViewport = { width: 1280, height: 720 };
 $('new-session').onclick = () => {
   $('session-name').value = '';
   $('session-url').value = 'https://';
-  $('session-start').style.display = '';
-  $('session-save').style.display = 'none';
+  $('session-setup').style.display = '';
+  $('session-live').style.display = 'none';
+  $('session-stream').src = '';
+  const load = $('session-loading');
+  if (load) load.classList.remove('hide');
   sessionRecId = null;
   $('session-modal').classList.add('on');
+  setTimeout(() => $('session-name').focus(), 50);
 };
 $('session-start').onclick = async () => {
   const name = $('session-name').value.trim();
   const url = $('session-url').value.trim();
   if (!name || !url) return alert('Name and URL required');
   try {
-    const { id } = await api('/api/sessions/start', { method: 'POST', body: JSON.stringify({ name, url }) });
-    sessionRecId = id;
-    $('session-start').style.display = 'none';
-    $('session-save').style.display = '';
+    const r = await api('/api/sessions/start', { method: 'POST', body: JSON.stringify({ name, url }) });
+    sessionRecId = r.id;
+    if (r.viewport) sessionViewport = r.viewport;
+    $('session-setup').style.display = 'none';
+    $('session-live').style.display = '';
+    $('session-addr').value = url;
+    setTimeout(() => $('session-stream').focus(), 100);
+    toast('Loading page…', 'info', 2000);
   } catch (e) { alert(e.message); }
 };
 $('session-save').onclick = async () => {
@@ -613,12 +682,41 @@ $('session-save').onclick = async () => {
     sessionRecId = null;
     closeModal('session-modal');
     await loadSessions();
+    toast('Session saved', 'success');
   } catch (e) { alert(e.message); }
 };
 $('session-cancel').onclick = async () => {
   if (sessionRecId) { try { await api('/api/sessions/cancel/' + sessionRecId, { method: 'POST' }); } catch {} sessionRecId = null; }
   closeModal('session-modal');
 };
+$('session-stream').addEventListener('click', async (e) => {
+  if (!sessionRecId) return;
+  const { x, y } = streamCoords(e.target, e, sessionViewport);
+  try { await api('/api/sessions/click/' + sessionRecId, { method: 'POST', body: JSON.stringify({ x, y }) }); }
+  catch (err) { toast(err.message, 'error'); }
+});
+$('session-stream').addEventListener('wheel', async (e) => {
+  if (!sessionRecId) return;
+  e.preventDefault();
+  try { await api('/api/sessions/scroll/' + sessionRecId, { method: 'POST', body: JSON.stringify({ dx: e.deltaX, dy: e.deltaY }) }); }
+  catch {}
+}, { passive: false });
+$('session-stream').addEventListener('keydown', async (e) => {
+  if (!sessionRecId) return;
+  const m = mapKey(e);
+  if (!m) return;
+  e.preventDefault();
+  try { await api('/api/sessions/type/' + sessionRecId, { method: 'POST', body: JSON.stringify(m) }); }
+  catch {}
+});
+$('session-go').onclick = async () => {
+  if (!sessionRecId) return;
+  const url = $('session-addr').value.trim();
+  if (!url) return;
+  try { await api('/api/sessions/goto/' + sessionRecId, { method: 'POST', body: JSON.stringify({ url }) }); }
+  catch (e) { toast(e.message, 'error'); }
+};
+$('session-addr').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('session-go').click(); } });
 
 // --- AI Generate ---
 $('ai-flow').onclick = () => {
@@ -938,6 +1036,16 @@ function connectWS() {
       const img = $('picker-stream');
       if (img) img.src = 'data:image/jpeg;base64,' + msg.data;
       const load = $('picker-loading');
+      if (load) load.classList.add('hide');
+    } else if (msg.type === 'record-frame') {
+      const img = $('record-stream');
+      if (img) img.src = 'data:image/jpeg;base64,' + msg.data;
+      const load = $('record-loading');
+      if (load) load.classList.add('hide');
+    } else if (msg.type === 'session-frame') {
+      const img = $('session-stream');
+      if (img) img.src = 'data:image/jpeg;base64,' + msg.data;
+      const load = $('session-loading');
       if (load) load.classList.add('hide');
     } else if (msg.type === 'picker-cancelled') {
       pickerTargetInput = null;

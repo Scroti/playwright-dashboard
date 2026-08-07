@@ -435,6 +435,45 @@ button svg { width: 14px; height: 14px; flex-shrink: 0; stroke-width: 2; }
   font-size: 0.85rem;
 }
 .picker-loading.hide { display: none; }
+.picker-stream-box img:focus { outline: 2px solid hsl(var(--primary)); outline-offset: -2px; }
+
+/* Address bar for streamed browsers (recorder + session) */
+.stream-addressbar {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  align-items: center;
+}
+.stream-addressbar input {
+  flex: 1;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+}
+.stream-addressbar button { flex: none; }
+
+/* Recorder split layout: stream + captured steps panel side-by-side */
+.stream-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 0.75rem;
+}
+.stream-layout .stream-side {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.stream-layout .stream-side label { margin-bottom: 0.35rem; }
+.stream-layout .recorded-steps {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 70vh;
+  min-height: 200px;
+}
+@media (max-width: 900px) {
+  .stream-layout { grid-template-columns: 1fr; }
+  .stream-layout .recorded-steps { max-height: 200px; }
+}
+
 .spinner {
   width: 24px;
   height: 24px;

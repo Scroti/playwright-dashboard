@@ -96,7 +96,8 @@ If deploying from scratch on a fresh VPS: `bash deploy.sh` then `bash setup-tunn
 - **Public trigger URLs**: `POST /api/trigger/:flowId` (bypasses password auth for external webhooks — Zapier, GitHub Actions, Stripe, etc.)
 - **Alerts on N consecutive failures** → notification
 - **Notifications**: Discord, Slack, Telegram (webhook URLs / bot token+chat in settings)
-- **Recorder**: `⏺ Record` opens headed browser, captures clicks + inputs as steps
+- **Recorder**: `⏺ Record` launches **headless** Chromium on the server, streams via CDP to the modal (viewport 1280×720). User clicks/types on the stream — captured as steps. Works on VPS with no X display. URL bar for in-recording navigation. Special keys (Enter/Tab/Backspace/arrows/Esc/Home/End/PageUp/PageDown) forward via `keyboard.press`; printable chars via `keyboard.type`.
+- **Session capture**: same streamed-headless pattern as Recorder. Log in through the streamed browser, hit "I'm logged in — save" → `storageState()` written to `data/sessions/`.
 - **AI Generate**: prompt → Claude Sonnet 4.6 (via Anthropic API key in settings) → returns flow JSON, saved as new flow. Uses prompt caching on the system prompt.
 - **Selector picker**: `🖱 Pick` button next to any selector/url input → headless browser streamed via CDP screencast → click on stream → best-effort CSS selector auto-filled
 - **Live preview during runs**: CDP screencast to the "Live preview" tab
