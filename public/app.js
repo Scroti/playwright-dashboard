@@ -225,6 +225,8 @@ function renderEditor() {
   $('flow-proxy-user').value = f.proxyUser || '';
   $('flow-proxy-pass').value = f.proxyPass || '';
   $('flow-extra-headers').value = f.extraHeaders || '';
+  $('flow-locale').value = f.locale || '';
+  $('flow-timezone').value = f.timezoneId || '';
   const base = settingsCache.publicUrl || location.origin;
   $('flow-trigger').value = `${base}/api/trigger/${f.id}`;
   renderStepsInto(f.steps || [], $('steps'));
@@ -475,6 +477,8 @@ async function saveFlow() {
   f.proxyUser = $('flow-proxy-user').value.trim();
   f.proxyPass = $('flow-proxy-pass').value;
   f.extraHeaders = $('flow-extra-headers').value.trim();
+  f.locale = $('flow-locale').value.trim();
+  f.timezoneId = $('flow-timezone').value.trim();
   await api('/api/flows/' + f.id, { method: 'PUT', body: JSON.stringify(f) });
   await loadFlows();
   toast('Flow saved', 'success', 1500);

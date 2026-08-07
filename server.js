@@ -508,8 +508,6 @@ async function runFlow(flow, options = {}) {
       Object.assign(ctxOpts, devices[flow.device]);
     }
     if (stealth && !flow.device) {
-      // Only apply desktop defaults if no device preset is chosen (device presets already
-      // supply UA + viewport for their target device).
       ctxOpts.userAgent = STEALTH_UA_HEADLESS;
       ctxOpts.viewport = { width: 1920, height: 1080 };
       ctxOpts.locale = 'en-US';
@@ -518,6 +516,9 @@ async function runFlow(flow, options = {}) {
       ctxOpts.hasTouch = false;
       ctxOpts.isMobile = false;
     }
+    // Per-flow overrides (apply regardless of stealth so you can match a proxy's geo)
+    if (flow.locale) ctxOpts.locale = flow.locale;
+    if (flow.timezoneId) ctxOpts.timezoneId = flow.timezoneId;
     if (flow.sessionName) {
       const file = path.join(SESSIONS_DIR, flow.sessionName + '.json');
       try {
