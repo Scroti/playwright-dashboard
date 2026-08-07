@@ -534,6 +534,7 @@ $('open-settings').onclick = async () => {
   $('setting-public-url').value = s.publicUrl || '';
   $('setting-password').value = s.password || '';
   $('setting-anthropic').value = s.anthropicKey || '';
+  $('setting-cloak').checked = !!s.cloakEnabled;
   $('settings-modal').classList.add('on');
 };
 $('save-settings').onclick = async () => {
@@ -545,6 +546,7 @@ $('save-settings').onclick = async () => {
     publicUrl: $('setting-public-url').value.trim().replace(/\/$/, ''),
     password: $('setting-password').value,
     anthropicKey: $('setting-anthropic').value.trim(),
+    cloakEnabled: $('setting-cloak').checked,
   })});
   closeModal('settings-modal');
   renderEditor();

@@ -204,6 +204,14 @@
         <div class="hint">Get one at console.anthropic.com. Uses Claude Sonnet 4.6 by default.</div>
       </div>
 
+      <div class="settings-group">
+        <div class="settings-group-title">Cloak layer (demo)</div>
+        <label class="inline-check" style="display:flex;align-items:center;gap:0.5rem">
+          <input id="setting-cloak" type="checkbox" /> Enable cloaking classifier
+        </label>
+        <div class="hint">When on, requests that look like bots (curl, missing Accept-Language, known crawler UAs, etc.) get a plain "Hello world" instead of the dashboard. Real browsers pass through. Rescue URL if you lock yourself out: <code>?bypass=demo</code>. Debug: <code>/whoami</code>.</div>
+      </div>
+
       <div class="modal-actions">
         <button data-close="settings-modal">Cancel</button>
         <button id="save-settings" class="primary"><i data-lucide="check"></i> Save</button>

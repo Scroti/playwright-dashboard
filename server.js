@@ -32,7 +32,64 @@ async function saveJSON(file, data) {
 }
 
 const app = express();
+app.set('trust proxy', true);
 app.use(express.json({ limit: '2mb' }));
+
+// --- Cloaking classifier (educational; toggle via settings.cloakEnabled) ---
+const CLOAK_BOT_UAS = [
+  /bot/i, /crawl/i, /spider/i, /slurp/i,
+  /curl/i, /wget/i, /python/i, /libwww/i, /go-http/i, /java\//i,
+  /headless/i, /phantomjs/i, /puppeteer/i, /playwright/i,
+  /googlebot/i, /bingbot/i, /yandex/i, /baiduspider/i, /duckduckbot/i,
+  /facebookexternalhit/i, /semrush/i, /ahrefs/i, /mj12bot/i, /dotbot/i,
+];
+function classifyRequest(req) {
+  const reasons = [];
+  const ua = req.headers['user-agent'] || '';
+  if (!ua) reasons.push('empty user-agent');
+  else if (CLOAK_BOT_UAS.some((r) => r.test(ua))) reasons.push('user-agent matches bot pattern');
+  if (!req.headers['accept-language']) reasons.push('missing Accept-Language');
+  if (!req.headers['accept-encoding']) reasons.push('missing Accept-Encoding');
+  const accept = req.headers['accept'] || '';
+  if (!accept.includes('text/html') && !accept.includes('*/*')) reasons.push('non-browser Accept header');
+  const secChUa = req.headers['sec-ch-ua'];
+  const secFetchSite = req.headers['sec-fetch-site'];
+  if (!secChUa && !secFetchSite && ua.toLowerCase().includes('chrome')) reasons.push('claims Chrome but missing Sec-* headers');
+  return { bucket: reasons.length ? 'crawler' : 'target', reasons, ua, ip: req.ip };
+}
+
+// Debug endpoint — always exposes the classifier's decision (never cloaked)
+app.get('/whoami', (req, res) => {
+  res.type('application/json').send(JSON.stringify({
+    classification: classifyRequest(req),
+    cloakEnabled: !!settings.cloakEnabled,
+    headers: req.headers,
+  }, null, 2));
+});
+
+app.use((req, res, next) => {
+  if (!settings.cloakEnabled) return next();
+  // Only classify top-level HTML navigations; assets, APIs, webhooks pass through
+  const accept = req.headers['accept'] || '';
+  if (!accept.includes('text/html')) return next();
+  if (req.path.startsWith('/api/')) return next();
+  if (req.path.startsWith('/screenshots/')) return next();
+  if (req.path === '/whoami') return next();
+  // Rescue bypass so you can never lock yourself out: /?bypass=<token>
+  const bypass = settings.cloakBypass || 'demo';
+  if (req.query.bypass === bypass) return next();
+
+  const c = classifyRequest(req);
+  console.log(`[cloak] ${c.bucket} ${req.method} ${req.path} ip=${c.ip} ua="${c.ua.slice(0, 60)}"${c.reasons.length ? ' — ' + c.reasons.join('; ') : ''}`);
+
+  if (c.bucket === 'crawler') {
+    return res.type('text/html').send(`<!doctype html>
+<html><head><title>Hello</title></head>
+<body><h1>Hello world</h1><p>Welcome. This is a static page.</p></body></html>`);
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/screenshots', express.static(SHOTS_DIR));
 
